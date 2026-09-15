@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>音乐播放器</title>
+    <style>
+        /* ============================================================
+           网易云音乐操控器（蓝白面板）
+           · 窗口由 main.js 开（无边框 + 透明 + 位置记忆 + 下方滑入动画 + screen-saver 同级置顶）
+           · 真正的播放/队列在桌宠页，这里只是遥控器：
+               面板 → main → 桌宠页  musicCmd({cmd,...})
+               桌宠页 → main → 面板  onMusicState(state)（每秒一次）
+           · 6 个控件：上一首（历史回退，最多 5 首）/ □暂停-▶继续 / 下一首 /
+             ▽ 播放列表下拉（点任意一首 = 插播，播完回原队列下一首，队列顺序不变）/
+             隐藏操作面板（音乐不停）/ × 关闭音乐播放器（停止播放并关窗）
+           ============================================================ */
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            color: #123;
+            user-select: none;
+        }
+        #card {
+            /* 卡片固定高度 + 贴窗口**顶部**：打开「▽列表」时窗口向下延申，
+               卡片不动，多出来的空间正好让列表在按钮下方展开（不会被窗口裁掉） */
+            position: absolute; left: 6px; right: 6px; top: 6px; height: 184px;
+            background: linear-gradient(160deg, #ffffff 0%, #f2f7ff 100%);
+            border: 1px solid rgba(47,111,208,.35);
+            border-radius: 14px;
+            box-shadow: 0 8px 26px rgba(20,50,95,.28), inset 0 1px 0 #fff;
+            display: flex; flex-direction: column;
+            padding: 10px 12px 12px;
+        }
+        /* 顶部：封面 + 歌名 + 窗口按钮（这一条可拖动窗口） */
+        .top { display: flex; align-items: center; gap: 10px; -webkit-app-region: drag; }
+        .cover {
+            width: 46px; height: 46px; flex-shrink: 0; border-radius: 10px;
+            background: linear-gradient(140deg, #2f6fd0, #6aa9ff);
+            color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 8px rgba(47,111,208,.35);
+        }
+        .cover.temp { background: linear-gradient(140deg, #1f9d5f, #63c98f); }
+        .info { flex: 1; min-width: 0; }
+        .name { font-size: 15px; font-weight: 700; color: #12345c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .artist { font-size: 12px; color: #5b7a9c; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .badge { display: inline-block; font-size: 10px; color: #fff; background: #1f9d5f; border-radius: 6px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+        .win-btns { display: flex; gap: 6px; -webkit-app-region: no-drag; }
+        .win-btns button {
+            width: 30px; height: 24px; padding: 0; line-height: 1; font-size: 13px; cursor: pointer;
+            color: #16324f; background: #fff; border: 1px solid rgba(22,50,79,.28); border-radius: 6px;
+        }
+        .win-btns button:hover { background: #d4e6f1; }
+        #btnClose:hover { background: #f3c2c2; border-color: #c98a8a; color: #8c1f1f; }
+        body.no-electron .win-btns { display: none; }
+
+        /* 进度条 */
+        .bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+        .bar .t { font-size: 11px; color: #4a6b8f; width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+        input[type=range] { -webkit-appearance: none; appearance: none; height: 5px; border-radius: 999px; background: #d8e6f7; outline: none; cursor: pointer; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+            background: #2f6fd0; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(47,111,208,.5);
+        }
+        #seek { flex: 1; min-width: 0; }
+        #vol { width: 86px; }
+
+        /* 控制条 */
+        .ctrl { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .ctrl .big {
+            height: 34px; padding: 0 12px; font-size: 14px; cursor: pointer;
+            color: #16324f; background: #fff; border: 1px solid rgba(47,111,208,.35); border-radius: 9px;
+            box-shadow: 0 1px 3px rgba(47,111,208,.18);
+        }
+        .ctrl .big:hover { background: #e8f1fd; }
+        .ctrl .big:disabled { opacity: .45; cursor: default; background: #fff; }
+        #btnToggle { min-width: 52px; font-weight: 700; color: #fff; background: #2f6fd0; border-color: #2f6fd0; }
+        #btnToggle:hover { background: #27599f; }
+        #btnToggle.paused { background: #1f9d5f; border-color: #1f9d5f; }
+        .spacer { flex: 1; }
+        .volwrap { display: flex; align-items: center; gap: 6px; color: #4a6b8f; font-size: 13px; }
+
+        /* ▽ 播放列表下拉 */
+        .list-wrap { position: relative; }
+        #btnList { min-width: 92px; }
+        #listPanel {
+            display: none; position: absolute; left: 0; top: 40px; width: 320px; max-height: 260px; overflow-y: auto;
+            background: #fff; border: 1px solid rgba(47,111,208,.35); border-radius: 10px;
+            box-shadow: 0 10px 26px rgba(20,50,95,.25); padding: 6px; z-index: 20;
+        }
+        #listPanel.show { display: block; }
+        .li { display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
+        .li:hover { background: #e8f1fd; }
+        .li .idx { color: #8ba3bd; width: 20px; text-align: right; flex-shrink: 0; }
+        .li .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #12345c; }
+        .li .ar { color: #6c86a3; font-size: 11.5px; max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .li.playing { background: #2f6fd0; }
+        .li.playing .nm, .li.playing .ar, .li.playing .idx { color: #fff; }
+        .li.next .nm::after { content: '（下一首）'; font-size: 10.5px; color: #1f9d5f; }
+        .li.playing .nm::after { color: #dbe9ff; }
+        .li .tag { font-size: 10px; color: #fff; background: #1f9d5f; border-radius: 5px; padding: 0 4px; }
+        .empty { font-size: 12.5px; color: #7b93ad; padding: 8px 6px; }
+        .hist { font-size: 11px; color: #7b93ad; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    </style>
+</head>
+<body>
+<div id="card">
+    <div class="top">
+        <div class="cover" id="cover">♪</div>
+        <div class="info">
+            <div class="name" id="songName">还没在放歌</div>
+            <div class="artist" id="songArtist">跟阿罗娜说「播放音乐」吧～</div>
+        </div>
+        <div class="win-btns">
+            <button id="btnHide" title="隐藏操作面板（音乐继续）">▭</button>
+            <button id="btnClose" title="关闭音乐播放器（停止播放）">✕</button>
+        </div>
+    </div>
+    <div class="bar">
+        <span class="t" id="tCur">0:00</span>
+        <input type="range" id="seek" min="0" max="1000" value="0" step="1">
+        <span class="t" id="tDur">0:00</span>
+    </div>
+    <div class="ctrl">
+        <!-- ▽列表放最左：下拉从按钮左边缘向右展开，320px 才塞得进 560px 宽的窗口
+             （原来放在「下一首」右边 → 列表右侧被窗口切掉，老师实测踩过） -->
+        <div class="list-wrap">
+            <button class="big" id="btnList" title="播放列表（点任意一首立即插播，不打乱队列顺序）">▽ 列表</button>
+            <div id="listPanel"><div class="empty">队列还是空的～</div></div>
+        </div>
+        <button class="big" id="btnPrev" title="上一首（历史回退，最多 5 首）">⏮ 上一首</button>
+        <button class="big" id="btnToggle" title="暂停">□</button>
+        <button class="big" id="btnNext" title="下一首">⏭ 下一首</button>
+        <span class="spacer"></span>
+        <span class="volwrap">🔊 <input type="range" id="vol" min="0" max="100" value="40"></span>
+    </div>
+    <div class="hist" id="histLine"></div>
+</div>
+
+<script>
+    var api = window.electronAPI;
+    var seeking = false, volDragging = false, lastState = null;
+
+    function fmt(sec) {
+        sec = Math.floor(sec || 0);
+        if (!isFinite(sec) || sec < 0) sec = 0;
+        var m = Math.floor(sec / 60), s = sec % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+    function send(cmd, arg) { if (api && api.musicCmd) api.musicCmd({ cmd: cmd, arg: arg }); }
+
+    function render(s) {
+        if (!s) return;
+        lastState = s;
+        var name = document.getElementById('songName');
+        var artist = document.getElementById('songArtist');
+        var cover = document.getElementById('cover');
+        if (s.song) {
+            name.textContent = s.song.name || '未知歌曲';
+            artist.textContent = (s.song.artist || '未知歌手') + (s.song.temp ? ' · 插播中' : '');
+            cover.classList.toggle('temp', !!s.song.temp);
+        } else {
+            name.textContent = '还没在放歌';
+            artist.textContent = '跟阿罗娜说「播放音乐」吧～';
+            cover.classList.remove('temp');
+        }
+        // 进度（拖动中不覆盖）
+        if (!seeking) {
+            var dur = s.dur || 0;
+            document.getElementById('seek').value = dur > 0 ? Math.round((s.pos / dur) * 1000) : 0;
+            document.getElementById('tCur').textContent = fmt(s.pos);
+            document.getElementById('tDur').textContent = fmt(dur);
+        }
+        // 暂停键：播放中显示 □，暂停时显示 ▶
+        var tg = document.getElementById('btnToggle');
+        tg.textContent = s.playing ? '□' : '▶';
+        tg.title = s.playing ? '暂停' : '继续';
+        tg.classList.toggle('paused', !s.playing);
+        document.getElementById('btnPrev').disabled = !s.canPrev;
+        // 音量（拖动中不覆盖）
+        if (!volDragging) document.getElementById('vol').value = Math.round((s.volume != null ? s.volume : 0.4) * 100);
+        // 列表
+        var box = document.getElementById('listPanel');
+        if (!s.queue || !s.queue.length) {
+            box.innerHTML = '<div class="empty">队列还是空的～</div>';
+        } else {
+            var html = '';
+            for (var i = 0; i < s.queue.length; i++) {
+                var q = s.queue[i];
+                var cls = 'li' + (q.playing ? ' playing' : '') + (q.next ? ' next' : '');
+                html += '<div class="' + cls + '" data-i="' + q.i + '">'
+                    + '<span class="idx">' + (i + 1) + '</span>'
+                    + '<span class="nm">' + esc(q.name) + '</span>'
+                    + '<span class="ar">' + esc(q.artist || '') + '</span>'
+                    + (q.playing ? '<span class="tag">' + (s.song && s.song.temp ? '插播中' : '正在播') + '</span>' : '')
+                    + '</div>';
+            }
+            box.innerHTML = html;
+            Array.prototype.forEach.call(box.querySelectorAll('.li'), function (el) {
+                el.addEventListener('click', function () {
+                    send('playIndex', parseInt(el.getAttribute('data-i'), 10));
+                    setListOpen(false);            // 收起列表，并把窗口高度收回去
+                });
+            });
+        }
+        document.getElementById('histLine').textContent = (s.history && s.history.length)
+            ? '上一首可回退：' + s.history.join(' ← ') : '';
+    }
+    function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]; }); }
+
+    // ===== 控件 =====
+    document.getElementById('btnPrev').addEventListener('click', function () { send('prev'); });
+    document.getElementById('btnNext').addEventListener('click', function () { send('next'); });
+    document.getElementById('btnToggle').addEventListener('click', function () { send('toggle'); });
+    // ===== ▽ 列表：打开时让主进程把窗口向上加高，列表才不会被窗口裁掉 =====
+    function setListOpen(open) {
+        var box = document.getElementById('listPanel');
+        if (open) {
+            if (api && api.musicPanelResize) api.musicPanelResize(true);
+            box.classList.add('show');
+            send('state');
+            // 等窗口长高完再按当前可视高度收紧列表（屏幕顶空间不足时也能完整可见并内部滚动）
+            setTimeout(function () {
+                var avail = window.innerHeight - 196 - 12;
+                box.style.maxHeight = Math.max(120, Math.min(260, avail)) + 'px';
+            }, 60);
+        } else {
+            box.classList.remove('show');
+            box.style.maxHeight = '';
+            if (api && api.musicPanelResize) api.musicPanelResize(false);
+        }
+    }
+    document.getElementById('btnList').addEventListener('click', function (e) {
+        e.stopPropagation();
+        setListOpen(!document.getElementById('listPanel').classList.contains('show'));
+    });
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#listPanel') && !e.target.closest('#btnList')) {
+            if (document.getElementById('listPanel').classList.contains('show')) setListOpen(false);
+        }
+    });
+    // 进度条：拖动时本地预览，松手才 seek（避免每秒状态把它拽回去）
+    var seekEl = document.getElementById('seek');
+    seekEl.addEventListener('input', function () {
+        seeking = true;
+        var dur = (lastState && lastState.dur) || 0;
+        document.getElementById('tCur').textContent = fmt(dur * (seekEl.value / 1000));
+    });
+    seekEl.addEventListener('change', function () {
+        var dur = (lastState && lastState.dur) || 0;
+        send('seek', dur * (seekEl.value / 1000));
+        seeking = false;
+    });
+    // 音量：拖动中不发，松手发一次
+    var volEl = document.getElementById('vol');
+    volEl.addEventListener('input', function () { volDragging = true; });
+    volEl.addEventListener('change', function () {
+        send('volume', parseFloat(volEl.value) / 100);
+        volDragging = false;
+    });
+    // 隐藏操作面板：只收起来，音乐继续
+    document.getElementById('btnHide').addEventListener('click', function () {
+        if (api && api.hideMusicPanel) api.hideMusicPanel();
+    });
+    // × 关闭音乐播放器：先让桌宠页停止播放，再关窗
+    document.getElementById('btnClose').addEventListener('click', function () {
+        send('stop');
+        setTimeout(function () { if (api && api.closeMusicPanel) api.closeMusicPanel(); }, 120);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            // 列表开着先关列表（顺带把窗口收回原高），再按一次才隐藏面板
+            if (document.getElementById('listPanel').classList.contains('show')) setListOpen(false);
+            else document.getElementById('btnHide').click();
+        }
+        if (e.key === ' ') { e.preventDefault(); send('toggle'); }
+    });
+    // 面板失焦（点了别处）→ 收起列表并收回窗口高度
+    window.addEventListener('blur', function () {
+        if (document.getElementById('listPanel').classList.contains('show')) setListOpen(false);
+    });
+
+    if (!api) {
+        document.body.classList.add('no-electron');
+        document.getElementById('songArtist').textContent = '（要在桌宠窗口里用哦）';
+    } else if (api.onMusicState) {
+        api.onMusicState(render);
+        send('state');          // 打开时先要一次状态
+    }
+</script>
+</body>
+</html>

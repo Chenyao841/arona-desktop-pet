@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>语音合成调试</title>
+    <style>
+        body { background: #14161d; color: #e8ecf2; font-family: "Microsoft YaHei", sans-serif; margin: 0; padding: 18px 22px 40px; }
+        h1 { font-size: 18px; color: #7ACBF6; margin: 0 0 6px; }
+        .desc { font-size: 12.5px; color: #8b95a7; line-height: 1.7; margin-bottom: 12px; }
+        .desc code { background: #232838; padding: 1px 5px; border-radius: 4px; color: #9fd6ff; }
+        .card { background: #1b1e27; border: 1px solid #262c3a; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+        textarea { width: 100%; min-height: 56px; background: #232838; border: 1px solid #39415a; color: #fff; border-radius: 6px; padding: 8px 10px; font-size: 14px; font-family: inherit; box-sizing: border-box; }
+        .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+        button { background: #2b3245; color: #dfe5ef; border: 1px solid #39415a; border-radius: 5px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+        button:hover { background: #38405a; }
+        button.primary { background: #7ACBF6; color: #0d1017; border-color: #7ACBF6; font-weight: bold; }
+        button.mini { padding: 4px 10px; font-size: 12.5px; }
+        button.ok { background: #2c5a45; border-color: #3f7f62; color: #d9ffe9; }
+        table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        th { text-align: left; color: #8b95a7; font-weight: normal; padding: 6px; border-bottom: 1px solid #2b3040; }
+        td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+        tr.cur { background: rgba(122,203,246,0.07); }
+        .sent { color: #ffd479; }
+        .meta { color: #7d879a; font-size: 11.5px; margin-top: 3px; line-height: 1.6; }
+        .hint { color: #8b95a7; font-size: 12px; }
+        #toast { position: fixed; right: 20px; bottom: 20px; background: #22303f; color: #9fd6ff; border: 1px solid #35506b; border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transition: .25s; pointer-events: none; max-width: 460px; }
+        #toast.show { opacity: 1; }
+        #toast.bad { background: #3a2226; border-color: #6b3535; color: #ffb3b3; }
+        .cur-badge { background: #2c5a45; color: #d9ffe9; border-radius: 4px; padding: 1px 6px; font-size: 11.5px; margin-left: 6px; }
+    </style>
+</head>
+<body>
+<h1>🔬 语音合成调试</h1>
+<div class="desc">
+    专门排查「句首语气词被拉长音 + 吞掉后文」。根因在 <b>GPT-SoVITS 的 GPT 阶段</b>：对「单字语气词 + 强停顿 <code>！</code>」容易生成过量语义码，而 <code>models.decode()</code> 里音频长度取语义码数
+    （<code>y_lengths = codes.size(2)*2</code>），于是「哇」被拉长、后面的字被压缩吞掉。下面每个变体用不同对策，逐个试听后选定一个当默认。
+</div>
+
+<div class="card">
+    <textarea id="text" placeholder="输入要试听的文本，例如：哇！老师晚上好～（开心地蹦了一下）"></textarea>
+    <div class="row">
+        <button class="primary" onclick="runAll()">▶ 全部生成并试听</button>
+        <button onclick="stopAudio()">■ 停止播放</button>
+        <span class="hint" id="status">提示：CPU 合成每条约 2~10 秒，会逐条生成、边生成边播</span>
+    </div>
+</div>
+
+<div class="card">
+    <table>
+        <thead><tr><th style="width:30%">变体</th><th style="width:38%">实际送给模型的文本</th><th>音频 / 选定</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="3" class="hint">点上面「全部生成并试听」开始</td></tr></tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="row" style="margin:0">
+        <button onclick="applyDefault()">✅ 把选中变体设为桌面版默认</button>
+        <span class="hint" id="defaultInfo">读取中…</span>
+    </div>
+</div>
+<div id="toast"></div>
+
+<script>
+let variants = [];
+let currentDefault = 0;
+let selected = null;
+let audio = null;
+
+function toast(msg, bad) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = bad ? 'show bad' : 'show';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = ''; }, 3000);
+}
+function esc(s) { return String(s == null ? '' : s).replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
+function loadVariants() {
+    fetch('/ai/tts/variants').then(r => r.json()).then(d => {
+        if (d.code !== 1) return;
+        variants = d.data.list || [];
+        currentDefault = d.data.defaultVariant;
+        let local = 0;
+        try { local = parseInt(JSON.parse(localStorage.getItem('pet_settings') || '{}').ttsVariant) || 0; } catch (e) {}
+        selected = local || currentDefault;
+        renderRows();
+        document.getElementById('defaultInfo').innerHTML =
+            '后端默认变体：<b>' + currentDefault + '</b>；桌面版当前使用：<b>' + (local || (currentDefault + '（跟随后端默认）')) + '</b>';
+    }).catch(() => toast('读取变体列表失败（后端没启动？）', true));
+}
+
+function renderRows(data) {
+    const body = document.getElementById('rows');
+    body.innerHTML = variants.map(v => {
+        const item = data ? data[v.variant] : null;
+        const isCur = v.variant === selected;
+        return '<tr class="' + (isCur ? 'cur' : '') + '" data-v="' + v.variant + '">' +
+            '<td>' + esc(v.name) + (isCur ? '<span class="cur-badge">已选</span>' : '') + '</td>' +
+            '<td class="sent" id="sent' + v.variant + '">' + (item && item.text != null ? esc(item.text) : '<span class="hint">—</span>') +
+                (item ? '<div class="meta">参考音频：' + esc(item.referWav) + '<br>提示文本：' + esc(item.referText) + '<br>采样：' + esc(item.params) + '</div>' : '') + '</td>' +
+            '<td>' +
+                (item && item.audio
+                    ? '<button class="mini primary" onclick="play(' + v.variant + ')">▶ 试听</button>'
+                    : '<span class="hint" id="st' + v.variant + '">待生成</span>') +
+                ' <button class="mini ' + (isCur ? '' : 'ok') + '" onclick="pick(' + v.variant + ')">' + (isCur ? '已选为默认' : '选它') + '</button>' +
+            '</td></tr>';
+    }).join('');
+    if (data) {
+        for (const k in data) {
+            if (data[k].audio) audioCache[k] = data[k].audio;
+        }
+    }
+}
+
+const audioCache = {};
+function play(v) {
+    const b64 = audioCache[v];
+    if (!b64) { toast('该变体还没生成', true); return; }
+    stopAudio();
+    audio = new Audio('data:audio/wav;base64,' + b64);
+    audio.play().catch(() => {});
+    toast('正在播放：' + (variants.find(x => x.variant === v) || {}).name);
+}
+function stopAudio() { if (audio) { audio.pause(); audio = null; } }
+
+function pick(v) {
+    selected = v;
+    renderRows(collected);
+    toast('已选中变体 ' + v + '，点下面「设为桌面版默认」写入设置');
+}
+
+let collected = null;
+function runAll() {
+    const text = document.getElementById('text').value.trim();
+    if (!text) { toast('先输入要试听的文本', true); return; }
+    collected = {};
+    renderRows(collected);
+    document.getElementById('status').textContent = '开始生成…';
+    let i = 0;
+    const next = () => {
+        if (i >= variants.length) {
+            document.getElementById('status').textContent = '全部生成完成，逐个试听对比后选一个';
+            renderRows(collected);
+            return;
+        }
+        const v = variants[i++].variant;
+        const st = document.getElementById('st' + v);
+        if (st) st.textContent = '生成中…';
+        fetch('/ai/tts/ab?text=' + encodeURIComponent(text) + '&variant=' + v)
+            .then(r => r.json()).then(d => {
+                if (d.code === 1) {
+                    collected[v] = d.data;
+                    if (d.data.audio) audioCache[v] = d.data.audio;
+                    renderRows(collected);
+                    // 第一条生成好就自动播，便于快速听差别
+                    if (Object.keys(collected).length === 1) play(v);
+                } else {
+                    toast('变体 ' + v + ' 生成失败：' + (d.message || ''), true);
+                    renderRows(collected);
+                }
+            })
+            .catch(e => { toast('变体 ' + v + ' 请求失败：' + e, true); })
+            .then(next);
+    };
+    next();
+}
+
+function applyDefault() {
+    if (!selected) { toast('先选一个变体', true); return; }
+    try {
+        const sets = JSON.parse(localStorage.getItem('pet_settings') || '{}');
+        sets.ttsVariant = selected;
+        localStorage.setItem('pet_settings', JSON.stringify(sets));
+    } catch (e) {}
+    toast('已设为桌面版默认（变体 ' + selected + '），刷新桌面版生效');
+    document.getElementById('defaultInfo').innerHTML = '桌面版当前使用：<b>' + selected + '</b>（刷新桌面版生效）';
+}
+
+document.getElementById('text').value = '哇！老师晚上好～（开心地蹦了一下）';
+loadVariants();
+</script>
+</body>
+</html>

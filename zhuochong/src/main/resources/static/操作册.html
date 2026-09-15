@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>桌宠操作册</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #14161d; color: #e8ecf2; font-family: "Microsoft YaHei", sans-serif; margin: 0; }
+        .app { display: flex; height: 100vh; }
+        .sidebar { width: 200px; flex-shrink: 0; background: #1b1e27; border-right: 1px solid #2b3040; overflow-y: auto; padding: 12px 0 20px; }
+        .brand { padding: 6px 16px 12px; color: #7ACBF6; font-weight: bold; font-size: 15px; }
+        .nav-item { padding: 9px 16px; font-size: 13.5px; color: #b9c2d0; cursor: pointer; border-left: 3px solid transparent; }
+        .nav-item:hover { background: #222634; color: #fff; }
+        .nav-item.active { background: #232838; color: #7ACBF6; border-left-color: #7ACBF6; }
+        .content { flex: 1; overflow-y: auto; padding: 22px 28px 80px; }
+        h1 { font-size: 20px; color: #7ACBF6; margin: 0 0 6px; }
+        h2 { font-size: 17px; color: #7ACBF6; margin: 0 0 4px; }
+        .sub { color: #8b95a7; font-size: 12.5px; margin-bottom: 14px; }
+        section.page { display: none; max-width: 900px; }
+        section.page.active { display: block; }
+        .card { background: #1b1e27; border: 1px solid #262c3a; border-radius: 10px; padding: 14px 18px; margin-bottom: 14px; }
+        .card h3 { font-size: 14.5px; margin: 0 0 8px; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .tag { font-size: 11.5px; padding: 2px 8px; border-radius: 4px; background: #26314a; color: #9fd6ff; font-weight: normal; }
+        .tag.req { background: #4a2b2b; color: #ffc9c9; }
+        .tag.opt { background: #2b4a35; color: #c9ffd9; }
+        ul { margin: 6px 0 0 0; padding-left: 20px; }
+        li { font-size: 13px; line-height: 1.85; color: #d5dbe6; }
+        code { background: #232838; padding: 1px 6px; border-radius: 4px; color: #9fd6ff; font-size: 12.5px; }
+        .warn { color: #ffd479; }
+        .bad { color: #ff9b9b; }
+        .ok { color: #86e0a8; }
+        table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); vertical-align: top; }
+        th { color: #8b95a7; font-weight: normal; }
+        .steps { counter-reset: s; }
+        .steps li { margin-bottom: 3px; }
+    </style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">📖 桌宠操作册</div>
+        <div id="nav"></div>
+    </aside>
+    <main class="content">
+        <section class="page" data-page="start">
+            <h1>从这里开始</h1>
+            <div class="sub">按顺序做完这三步，桌宠就能跑了；之后每个模块想用哪个再单独开</div>
+            <div class="card">
+                <h3>① 起服务 <span class="tag req">必须</span></h3>
+                <ul>
+                    <li>数据库：建库 → 导入结构 → 导入默认内容
+                        <br><code>mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS db03 DEFAULT CHARACTER SET utf8mb4;"</code>
+                        <br><code>mysql -u root -p db03 &lt; db/schema.sql</code>
+                        <br><code>mysql -u root -p db03 &lt; db/seed.sql</code></li>
+                    <li>数据库账号密码在 <code>src/main/java/com/cy/config/MyBatisConfig.java</code>（默认 root / CHANGE_ME_DB_PASSWORD，改成自己的）</li>
+                    <li>启动后端：<code>zhuochong/一键启动.bat</code> 或 IDEA 里跑 <code>ZhuochongApplication</code>（端口 8080）</li>
+                    <li>启动桌宠外壳：<code>zhuochong-electron</code> 下 <code>npm start</code>（托盘出现图标即可）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>② 登录管理页 <span class="tag">默认账号</span></h3>
+                <ul>
+                    <li>默认账号：<code>老师</code> / 密码 <code>123456</code>（身份「管理员」，有全部权限）</li>
+                    <li>改法：<code>src/main/resources/application.yml</code> 里的 <code>login.username / login.password / login.name / login.identity</code></li>
+                    <li class="warn">identity 只要不是「员工」就有写权限；写「员工」会变成只读账号</li>
+                    <li>登录页：<code>http://localhost:8080/登录.html</code>；管理页：<code>桌宠管理.html</code></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>③ 填 AI Key <span class="tag req">必须</span></h3>
+                <ul>
+                    <li>打开桌宠「基础设置」窗口（托盘右键 → 基础设置）→ 左侧 <b>🧠 AI 设定</b> → 填 API Key、API 地址（默认 DeepSeek）→ 保存配置</li>
+                    <li>左边「AI 提示词」区可以改人设与功能清单（按版本管理：先「查找」载入，改完「提交」）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>不想看长文？记住三句话</h3>
+                <ul>
+                    <li>所有功能都<b>默认关闭</b>，想用哪个就去「桌宠设置」对应模块页把首行开关打开</li>
+                    <li>开关下面的内容才是该模块的配置项（Key、路径、模型、音质…）</li>
+                    <li>大部分设置<b>改完即自动保存</b>，但前端资源改动要 <code>Ctrl+F5</code>；后端 Java 改动要重启后端</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="desktop">
+            <h1>桌面桌宠 · 日常操作</h1>
+            <div class="sub">右侧竖排按钮 + 托盘菜单 + 聊天框指令</div>
+            <div class="card">
+                <h3>右侧按钮（从下往上）</h3>
+                <table>
+                    <tr><th style="width:90px">按钮</th><th>作用 / 注意</th></tr>
+                    <tr><td>⚙</td><td>编辑选项按钮的位置与大小；开启期间点桌宠不会触发对话</td></tr>
+                    <tr><td>👁</td><td>点一次 → <b>下一条消息</b>会把屏幕截图发给 AI（需先开「桌面视觉」模块）；发完自动关闭</td></tr>
+                    <tr><td>🖱️</td><td>点一次 → 下一条消息允许 AI 操控鼠标（需先开「桌面视觉」模块）；发完自动关闭</td></tr>
+                    <tr><td>🎯</td><td>调整模式：拖桌宠=移动位置，滑块=缩放；<code>◀ ▶</code> 可切到音效/特效视频逐个调位置大小（自动保存）</td></tr>
+                    <tr><td>🥛</td><td>喂牛奶：拿起草莓牛奶跟随鼠标 → 移近桌宠会放大 → 点桌宠=一次「牛奶」互动</td></tr>
+                    <tr><td>🔍</td><td>联网查询：点一次 → 下一条消息先联网检索再回答（需先在「联网查询」页开开关、填博查 Key）；发完自动关闭</td></tr>
+                </table>
+            </div>
+            <div class="card">
+                <h3>交互</h3>
+                <ul>
+                    <li><b>摸头</b>：在<b>头部区域（红框）</b>内按下并拖动 → 移出蓝框才算一次摸头；输入 <code>摸头区域</code> 可显示/微调这两个框</li>
+                    <li><b>点击</b>：单击桌宠 = 一次「点击」互动（回复文本在管理页用户操作=click 里配）</li>
+                    <li><b>聊天</b>：点对话框或按快捷键进入输入，回车发送；<code>Esc</code> 退出输入</li>
+                    <li><b>托盘菜单</b>：显示/隐藏、隐藏对话框、基础设置（设置窗口）、管理页面、开发者工具、退出</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>常用指令（在聊天框直接说）</h3>
+                <table>
+                    <tr><th style="width:170px">指令</th><th>作用</th></tr>
+                    <tr><td><code>摸头区域</code> / <code>摸头区域重置</code></td><td>显示或复位摸头有效区（红框=开始摸头范围，蓝框=结束范围）</td></tr>
+                    <tr><td><code>表情 疑惑</code> / <code>收回表情</code></td><td>试穿自制表情 / 表情复位</td></tr>
+                    <tr><td><code>眼神 转一圈</code> <code>眼神 慌张</code> <code>眼神 思考</code> <code>眼神 斜瞟</code> <code>眼神 俏皮眨眼</code> <code>眼神 疑惑</code></td><td>眼球动作动画（播完自动回到空闲逛视）</td></tr>
+                    <tr><td><code>眼球诊断</code> / <code>参数巡览</code></td><td>逐个扫参数并在屏上显示参数名，用来看「哪个参数真正控制哪个部位」</td></tr>
+                    <tr><td><code>播放音乐</code> / <code>点歌 XXX</code> / <code>下一首</code> / <code>歌曲队列</code></td><td>网易云听歌（队列里 ★ = 你自己点的歌，会优先播）</td></tr>
+                    <tr><td><code>网络天才</code> / <code>打把麻将</code> / <code>看看我的牌</code></td><td>小游戏与麻将（分别需开对应模块）</td></tr>
+                    <tr><td><code>帮老师抽个卡</code></td><td>蔚蓝档案自动抽卡（需管理员权限运行后端 + 桌面视觉）</td></tr>
+                </table>
+            </div>
+            <div class="card">
+                <h3>快捷键</h3>
+                <ul>
+                    <li><code>Ctrl+Shift+Z</code>：锁定/解锁桌宠窗口（锁定时鼠标可穿透到下层窗口，麻将/抽卡时需要）</li>
+                    <li><code>Ctrl+Shift+Q</code>：强制停止麻将自动打牌</li>
+                    <li><code>F12</code>：桌宠开发者工具（看日志很有用）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>鼠标点桌面（区域点击穿透）</h3>
+                <ul>
+                    <li>鼠标移到桌宠身上（模型/对话框/右下角按钮）→ <b>自动收回点击</b>，桌宠恢复正常交互</li>
+                    <li>鼠标移到桌宠以外的桌面区域 → <b>不会立刻放手</b>：视线跟随等状态继续保持着，桌宠随时还能点</li>
+                    <li>真的要操作桌面时：<b>在桌宠以外点一下</b>（这一下会被桌宠吃掉、不产生效果），之后的点击就都交给桌面了</li>
+                    <li>鼠标再回到桌宠身上时自动收回点击，如此循环；嫌麻烦可用 <code>Ctrl+Shift+Z</code> 直接锁定/解锁整窗穿透</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="settings">
+            <h1>桌宠设置窗口（基础设置）</h1>
+            <div class="sub">托盘右键 →「基础设置」；左侧菜单一页一个模块，每页首行是模块开关</div>
+            <div class="card">
+                <h3>通用规则</h3>
+                <ul>
+                    <li>每页<b>首行是模块总开关</b>：关掉后该页内容隐藏，相关能力（含指令）失效</li>
+                    <li>改动<b>立即自动保存</b>：前端行为类存浏览器 <code>localStorage</code>，功能类存后端 <code>ai_config</code></li>
+                    <li>每页底部是<b>该模块的指令表</b>：左边「主指令」是代码内置触发词（不可改），右边别名可增删改，重复会标红</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>各页要点速查</h3>
+                <table>
+                    <tr><th style="width:120px">页面</th><th>关键项</th></tr>
+                    <tr><td>🎀 基础外观</td><td>桌宠显示开关、宽度/XY、对话框宽与内边距、默认音量、选项文字化、闲置提醒</td></tr>
+                    <tr><td>🔊 语音 TTS</td><td>语音播报开关、GPT/SoVITS 模型下拉 + 切换、<b>打开模型/参考音频文件夹</b>、试听、合成变体下拉</td></tr>
+                    <tr><td>🧊 Live2D</td><td>模型模式开关、模型文件下拉（读取 <code>static/live2d/*.model3.json</code>）、XY 偏移、缩放、<b>空闲随机视线</b>、表情映射表</td></tr>
+                    <tr><td>🧠 AI 设定</td><td>API Key / 地址 / 模型 / Max Tokens / Temperature、语音转换地址、参考音频与参考文本、桌宠与用户姓名身份、AI 提示词（system + function）</td></tr>
+                    <tr><td>🔍 联网查询</td><td>模块开关、博查 API Key、每次注入条数、状态显示、试搜（含原始响应，便于排错）</td></tr>
+                    <tr><td>📺 直播</td><td>直播模式开关、房间号、弹幕抓取、B站 Cookie</td></tr>
+                    <tr><td>🀄 雀魂麻将</td><td>麻将插件开关、打开区域标注工具</td></tr>
+                    <tr><td>🎮 网络天才</td><td>模块开关、游戏模型、游戏快捷选项</td></tr>
+                    <tr><td>🎵 网易云听歌</td><td>模块开关、音质、网易云 UID（收藏歌单用）</td></tr>
+                    <tr><td>👁 桌面视觉</td><td>开关（决定 👁/🖱️ 按钮是否可用）、截图日志目录、抽卡阈值说明</td></tr>
+                </table>
+            </div>
+        </section>
+
+        <section class="page" data-page="tts">
+            <h1>🔊 语音 TTS</h1>
+            <div class="card">
+                <h3>需要什么 <span class="tag req">依赖</span></h3>
+                <ul>
+                    <li>GPT-SoVITS 整合包（本项目用的是 v2Pro 版），默认起在 <code>http://localhost:9880</code></li>
+                    <li><code>application.yml</code> 里 <code>tts.python</code> / <code>tts.api-dir</code> 指向整合包路径，<code>tts.auto-start: true</code> 时后端会自己拉起 <code>api.py</code></li>
+                    <li>语音模型（.ckpt / .pth）与参考音频（wav + 同名 txt）需要自备，放进对应目录后在设置页选</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>怎么开 <span class="tag">步骤</span></h3>
+                <ol class="steps">
+                    <li>确认 GPT-SoVITS 在跑：浏览器打开 <code>http://localhost:9880/docs</code> 能看到接口文档</li>
+                    <li>设置窗口 → 语音 TTS → 顶部开关打开 → 「GPT 模型」「SoVITS 模型」下拉选好 → 点「切换语音模型」</li>
+                    <li>点「▶ 试听」，能出声即通；不出声看右下角提示与后端控制台</li>
+                </ol>
+            </div>
+            <div class="card">
+                <h3>听感不对怎么办 <span class="tag opt">排错</span></h3>
+                <ul>
+                    <li><b>句首语气词被拉长音、吞字</b>（如「哇！老师…」）→ 用「🔬 语音合成调试」页逐个变体试听，选定后设为默认（变体 2「语气词后强停顿改逗号」通常最稳）</li>
+                    <li><b>换过语音模型后声音怪</b> → 缓存里还是旧模型的音频：清空 <code>tts_cache</code> 目录后重试</li>
+                    <li><b>参考音频</b>：建议 5~8 秒、单人、干净；<b>txt 内容必须与音频逐字对应</b>，否则容易拉长音/复读</li>
+                    <li><b>太慢</b>：单句约 1~3 秒属正常；命中缓存 <code>0.1 秒</code> 内。想更快可在设置页调小「样本步数」（质量会略降）</li>
+                    <li><b>让常用回复秒出</b>：管理页 →「语音库管理」→ 点<b>预热</b>，会把所有基础回复（登录/点击/摸头/闲置等）提前合成进缓存，之后这些互动几乎零等待</li>
+                    <li><b>文字已经比语音先出来了</b>：响应一到达就先显示文字+表情，语音随后跟上（所以"感觉慢"通常等的是 LLM 而不是语音）</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="live2d">
+            <h1>🧊 Live2D</h1>
+            <div class="card">
+                <h3>需要什么 <span class="tag req">依赖</span></h3>
+                <ul>
+                    <li>模型文件：<code>.model3.json</code> + <code>.moc3</code> + <code>textures/</code> + 可选 <code>.physics3.json</code>，放在 <code>static/live2d/</code> 下<b>顶层</b></li>
+                    <li class="warn">本项目<b>不附带模型</b>（版权原因），请自行获取后放进上述目录</li>
+                    <li>表情文件 <code>.exp3.json</code> 放在 <code>static/live2d/expressions/</code>（可选，模型自带的不够用时自己加）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>怎么开 <span class="tag">步骤</span></h3>
+                <ol class="steps">
+                    <li>设置窗口 → Live2D → 顶部开关打开 → 「🔄 重新读取」→ 模型下拉选中你的模型（写入 <code>pet_settings.live2dModel</code>）</li>
+                    <li>刷新桌面版（<code>Ctrl+F5</code>）→ 模型应加载出来；看控制台日志 <code>[L2D] 就绪 模型尺寸 …</code></li>
+                    <li>位置/大小不对：用 🎯 调整模式拖拽与滑块，或在本页填 XY 偏移与缩放</li>
+                </ol>
+            </div>
+            <div class="card">
+                <h3>表情映射表 <span class="tag opt">进阶</span></h3>
+                <ul>
+                    <li>作用：把「图片表情名」（如 <code>aluona_kaixin.png</code>）映射到 Live2D 表情文件（如 <code>正常微笑</code>，多个用逗号表示叠加）</li>
+                    <li>改法：设置页底部表格直接编辑 → 保存即时生效；重名会标红报错</li>
+                    <li>自制表情：在 <code>static/live2d/expressions/</code> 建 <code>xxx.exp3.json</code>，格式照抄现有文件（<code>Type</code> + <code>Parameters[{Id,Value,Blend}]</code>），重启桌面版后可被引用</li>
+                    <li class="warn">只能用模型<b>已有参数</b>；造不出全新形状（比如爱心瞳孔需要改模型美术）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>常见问题</h3>
+                <ul>
+                    <li><b>模型不出来</b>：看控制台 <code>[L2D]</code> 日志；确认 model3.json 在 <code>static/live2d/</code> 顶层、且内含的贴图路径正确</li>
+                    <li><b>眼睛直勾勾</b>：开启「空闲随机视线」（本页）；它会在空闲时随机看，说话时回到看老师</li>
+                    <li><b>某个部位不响应</b>：用指令 <code>参数巡览</code> / <code>眼球诊断</code> 逐个扫参数，屏上会显示参数名与中文名</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="ai">
+            <h1>🧠 AI 设定</h1>
+            <div class="card">
+                <h3>必填 <span class="tag req">必须</span></h3>
+                <ul>
+                    <li><b>API Key</b>：DeepSeek 或兼容接口的密钥；<b>API 地址</b>默认 <code>https://api.deepseek.com/v1/chat/completions</code></li>
+                    <li><b>对话模型</b>：<code>deepseek-chat</code>（快）或 <code>deepseek-reasoner</code>（慢但更会推理）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>AI 提示词（决定它像不像阿罗娜）</h3>
+                <ul>
+                    <li>分两块：<b>桌宠设定</b>（system，人设与说话风格）与<b>功能清单</b>（function，告诉它怎么输出 JSON、有哪些能力）</li>
+                    <li>按<b>版本号</b>管理：填版本 → 「🔍 查找」载入 → 改 → 「💾 提交」覆盖该版本；打开页面时默认载入最大版本</li>
+                    <li class="warn">改之前建议先「查找」当前版本并备份文本；提示词改坏会直接改变说话方式与 JSON 结构</li>
+                    <li>回复格式约定的要点：<code>boat_text</code>（正文）、<code>motion</code>（表情文件名）、<code>【】</code>=内心OS（会念）、<code>（）</code>=动作（不念）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>相关数据在哪</h3>
+                <table>
+                    <tr><th style="width:180px">内容</th><th>位置</th></tr>
+                    <tr><td>长期记忆</td><td>管理页「桌宠记忆库」（表 <code>pet_memory</code>），会全量注入提示词</td></tr>
+                    <tr><td>最近发生了什么</td><td>表 <code>event_book</code>（摸头/点击/喂奶/听歌/游戏等），对话时注入最近 5 条</td></tr>
+                    <tr><td>风格语料</td><td>管理页「风格语料库」（表 <code>style_exemplars</code>），按关键词召回当范例</td></tr>
+                    <tr><td>关键词规则</td><td>管理页「本地规则库」（表 <code>response_rule</code>），命中关键词就播固定文本+表情+音效</td></tr>
+                    <tr><td>当前时间</td><td>后端每次响应前注入「北京时间 + 星期 + 时段」，无需配置</td></tr>
+                </table>
+            </div>
+        </section>
+
+        <section class="page" data-page="websearch">
+            <h1>🔍 联网查询</h1>
+            <div class="card">
+                <h3>需要什么 <span class="tag req">依赖</span></h3>
+                <ul>
+                    <li>博查（Bocha）Web Search 的 API Key —— 在博查 AI 开放平台申请，有免费额度</li>
+                    <li class="warn">DeepSeek 的 API <b>不带联网</b>，所以必须外接搜索源；没有 Key 就只能靠模型记忆回答</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>怎么用 <span class="tag">步骤</span></h3>
+                <ol class="steps">
+                    <li>设置窗口 → 🔍 联网查询 → 打开模块开关 → 填 API Key → 「💾 保存」</li>
+                    <li>点「🔍 测试检索」确认能返回结果（失败时会显示<b>原始响应</b>，把它发出来即可定位是 Key 问题还是结构问题）</li>
+                    <li>桌面版点右侧 <b>🔍</b> 按钮（变蓝）→ 输入问题 → 发送 → 这一次会先联网检索再回答，发完按钮自动熄灭</li>
+                </ol>
+            </div>
+            <div class="card">
+                <h3>注意</h3>
+                <ul>
+                    <li><b>不会影响日常闲聊</b>：只有你点了 🔍 的那一条消息才联网，其余零延迟零费用</li>
+                    <li>检索结果以「【联网资料（检索于 … 北京时间）】」注入提示词，并要求它只依据资料、没查到就直说</li>
+                    <li>返回条数可调（默认 5）；条数越多越耗 token</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="live">
+            <h1>📺 直播</h1>
+            <div class="card">
+                <h3>需要什么 <span class="tag req">依赖</span></h3>
+                <ul>
+                    <li>B站直播间号（<code>room_id</code>）与 <b>B站 Cookie</b>（<code>bili_jct=…; SESSDATA=…</code>，从浏览器登录态里复制）</li>
+                    <li>Cookie 用于弹幕长连接鉴权；不填通常连不上或很快断开</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>怎么开 <span class="tag">步骤</span></h3>
+                <ol class="steps">
+                    <li>设置窗口 → 直播 → 填房间号与 Cookie → 保存</li>
+                    <li>顶部「直播模式」开关打开（会写入后端 <code>ai_config.live_mode</code>，桌面版重启后生效）</li>
+                    <li>「弹幕抓取」开关控制是否接收弹幕；冷却内置 10 秒/条，防刷屏</li>
+                    <li>也可以用聊天指令 <code>开启直播</code> / <code>关闭直播</code> 切换</li>
+                </ol>
+            </div>
+            <div class="card">
+                <h3>行为特点</h3>
+                <ul>
+                    <li>直播模式下提示词会追加直播规则：以 VUP 身份热情回应粉丝，回复更短（1~3 句）</li>
+                    <li>观众指令：<code>排队</code> / <code>取消排队</code> / <code>下一个</code> / <code>排队列表</code></li>
+                    <li>进入直播间欢迎会自动去重（30 秒内同一人只欢迎一次）</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="mahjong">
+            <h1>🀄 雀魂麻将</h1>
+            <div class="card">
+                <h3>需要什么 <span class="tag req">依赖</span></h3>
+                <ul>
+                    <li>雀魂（麻将）窗口在屏幕上，且桌宠后端能截屏（<code>application.yml</code> 里 <code>spring.main.headless: false</code>）</li>
+                    <li>区域坐标来自「区域标注工具」：按自己的分辨率标注摸牌区、手牌区、按钮等</li>
+                    <li class="warn">模拟器/游戏以管理员运行时，普通权限的后端点不动它（UIPI），需要<b>以管理员身份运行后端</b></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>怎么用</h3>
+                <ul>
+                    <li>设置窗口 → 雀魂麻将 → 打开插件开关 → 点「🎯 打开区域标注工具」按自己的界面标注</li>
+                    <li>聊天指令：<code>看看我的牌</code>（读牌+建议）、<code>打把麻将</code>（自动打）、<code>结束麻将</code>、<code>麻将状态</code>、<code>出牌 三条</code>、<code>摸牌 三条</code>、<code>误报 三条</code>、<code>打开合作模式</code>（吃碰杠交给你）</li>
+                    <li>急停：<code>Ctrl+Shift+Q</code></li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="game">
+            <h1>🎮 网络天才</h1>
+            <div class="card">
+                <h3>玩法</h3>
+                <ul>
+                    <li>聊天说 <code>网络天才</code> 开始；可选难度与出题方向（你出题它猜 / 它出题你猜）</li>
+                    <li>「游戏快捷选项」打开后，它提问时对话框上方会出现「是 / 可能是 / 可能不是 / 不是」按钮，点一下即回答</li>
+                    <li>游戏模型可单独选（推理模型更会猜，但更慢）</li>
+                    <li>结束：说 <code>不玩了</code> / <code>结束游戏</code>；也可以点管理页「历史对话管理」清掉残留</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="music">
+            <h1>🎵 网易云听歌</h1>
+            <div class="card">
+                <h3>需要什么 <span class="tag req">依赖</span></h3>
+                <ul>
+                    <li>本机跑 NeteaseCloudMusicApi（默认 <code>http://localhost:3000</code>），<code>application.yml</code> 里 <code>netease.app</code> 指向其 <code>app.js</code>，<code>auto-start: true</code> 时后端自动拉起</li>
+                    <li>想用「播放收藏歌单」需要填<b>网易云 UID</b>（设置页 → 网易云听歌）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>常用指令</h3>
+                <ul>
+                    <li>放歌：<code>播放音乐</code>（随机推荐队列）、<code>点歌 反方向的钟</code>、<code>网易云 反方向的钟</code>（先给候选列表）</li>
+                    <li>控制：<code>暂停</code> / <code>继续</code> / <code>下一首</code> / <code>随机播放</code> / <code>单曲循环</code> / <code>音量加大</code> / <code>静音</code></li>
+                    <li>查看：<code>当前播放</code>、<code>歌曲队列</code>（★ = 自己点的歌，会自动优先播）</li>
+                    <li class="warn">本地音乐文件播放已移除，全部走在线接口</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="vision">
+            <h1>👁 桌面视觉</h1>
+            <div class="card">
+                <h3>能力</h3>
+                <ul>
+                    <li>看到你的屏幕并据此回应（点 👁 一次 → 下一条消息带截图）</li>
+                    <li>允许 AI 操控鼠标完成界面操作（点 🖱️ 一次 → 下一条消息）</li>
+                    <li>蔚蓝档案自动抽卡：说 <code>帮老师抽个卡</code>，按标注的区域做图像匹配与点击</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>注意 <span class="tag req">权限</span></h3>
+                <ul>
+                    <li>截屏用 <code>java.awt.Robot</code>，所以后端必须<b>非 headless</b>（<code>application.yml</code> 已设 <code>headless: false</code>）</li>
+                    <li>合成鼠标点击受 UIPI 限制：目标程序若以管理员运行，请<b>以管理员身份运行后端与 IDEA</b></li>
+                    <li>截图会存到 <code>desktop_vision_log/</code>（用于排查）；不想留可在设置页看到目录后自行清理</li>
+                    <li>抽卡的匹配阈值、点击间隔、黑屏等待都写在 <code>GachaService.java</code> 顶部常量里，改完需重启后端</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="manager">
+            <h1>桌宠管理页</h1>
+            <div class="sub">给内容做增删改；顶部 ← → 切换各表，标题固定在正中</div>
+            <div class="card">
+                <h3>八个表</h3>
+                <table>
+                    <tr><th style="width:150px">表</th><th>作用</th></tr>
+                    <tr><td>对话功能模块数据表</td><td>基础对话与选项菜单的源头；「对话选项」子表可配按钮文案、动作、表情、下一级选项</td></tr>
+                    <tr><td>本地规则库</td><td>关键词触发：命中就播固定文本+表情+音效（当前最大的内容库）</td></tr>
+                    <tr><td>模型规则库</td><td>Live2D 情境与部件的联动规则</td></tr>
+                    <tr><td>语音库管理</td><td>常用固定回复的语音；可试听、重新生成、设为参考音频</td></tr>
+                    <tr><td>闲置活动库</td><td>长时间无互动时的自言自语活动（延续性/单发/睡觉）</td></tr>
+                    <tr><td>风格语料库</td><td>风格范例，按触发标签召回注入提示词</td></tr>
+                    <tr><td>桌宠记忆库</td><td>长期记忆（<code>pet_memory</code>），可增删改与清空；会全量进提示词</td></tr>
+                    <tr><td>历史对话管理</td><td>查看/编辑/删除历史对话（表 <code>ai_history</code>）</td></tr>
+                </table>
+            </div>
+            <div class="card">
+                <h3>注意</h3>
+                <ul>
+                    <li>左上「新增」按钮的作用随当前表变化（记忆库/闲置活动库/风格语料库支持新增，其余表隐藏）</li>
+                    <li>改动即时写库；桌宠端一般 <code>Ctrl+F5</code> 后生效</li>
+                    <li>「桌宠基础设置」已搬到桌宠设置窗口的 🧠 AI 设定页，管理页不再提供</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="page" data-page="faq">
+            <h1>常见问题 / 排错</h1>
+            <div class="card">
+                <h3>能跑起来但不说话 / 不回应</h3>
+                <ul>
+                    <li>看桌面版 <code>F12</code> 控制台与后端控制台：<code>/talk</code> 是否 200、有没有 API Key 报错</li>
+                    <li>API Key 没填或额度用尽 → AI 设定页检查；<code>deepseek-reasoner</code> 会明显更慢，可临时换 <code>deepseek-chat</code></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>改了东西没生效</h3>
+                <table>
+                    <tr><th style="width:230px">改了什么</th><th>怎么生效</th></tr>
+                    <tr><td>前端页面/JS/桥接（<code>static/**</code>）</td><td>同步到 <code>target/classes/static</code> 后 <code>Ctrl+F5</code>；改桥接要同时把引用版本号 <code>?v=N</code> 加一</td></tr>
+                    <tr><td>后端 Java</td><td>重新编译并<b>重启后端</b></td></tr>
+                    <tr><td>Electron <code>main.js</code> / <code>preload.js</code></td><td>重启 Electron</td></tr>
+                    <tr><td>CSS</td><td><code>Ctrl+F5</code>；仍不生效看 <code>&lt;link&gt;</code> 是否带版本号</td></tr>
+                </table>
+            </div>
+            <div class="card">
+                <h3>响应慢 / 语音卡</h3>
+                <ul>
+                    <li>单句语音正常 1~3 秒；命中缓存 <code>0.1 秒</code> 内</li>
+                    <li>GPT-SoVITS 是否在跑、是否用了 GPU；枪占 GPU 的程序（游戏/麻将自动化）会让语音明显变慢</li>
+                    <li>「样本步数」调小可提速（音质略降）；参考音频建议裁到 5~8 秒</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>端口与进程</h3>
+                <table>
+                    <tr><th style="width:150px">端口</th><th>服务</th></tr>
+                    <tr><td>8080</td><td>Spring Boot 后端（页面、接口）</td></tr>
+                    <tr><td>9880</td><td>GPT-SoVITS 语音（<code>api.py</code>）</td></tr>
+                    <tr><td>3000</td><td>NeteaseCloudMusicApi（听歌）</td></tr>
+                    <tr><td>3081</td><td>Electron 控制口（窗口锁定/穿透）</td></tr>
+                </table>
+            </div>
+            <div class="card">
+                <h3>素材与版权</h3>
+                <ul>
+                    <li>本项目<b>不附带</b> Live2D 模型、语音模型、参考音频、音乐等素材，需自备</li>
+                    <li>仅供个人学习交流，请勿用于商业用途；角色形象版权归原权利方所有</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+</div>
+<script>
+const PAGES = [
+    { key: 'start',    icon: '🚀', name: '从这里开始' },
+    { key: 'desktop',  icon: '🐾', name: '桌面桌宠操作' },
+    { key: 'settings', icon: '⚙️', name: '设置窗口导航' },
+    { key: 'tts',      icon: '🔊', name: '语音 TTS' },
+    { key: 'live2d',   icon: '🧊', name: 'Live2D' },
+    { key: 'ai',       icon: '🧠', name: 'AI 设定' },
+    { key: 'websearch',icon: '🔍', name: '联网查询' },
+    { key: 'live',     icon: '📺', name: '直播' },
+    { key: 'mahjong',  icon: '🀄', name: '雀魂麻将' },
+    { key: 'game',     icon: '🎮', name: '网络天才' },
+    { key: 'music',    icon: '🎵', name: '网易云听歌' },
+    { key: 'vision',   icon: '👁', name: '桌面视觉' },
+    { key: 'manager',  icon: '🗂', name: '管理页' },
+    { key: 'faq',      icon: '🛠', name: '常见问题' }
+];
+const nav = document.getElementById('nav');
+nav.innerHTML = PAGES.map((p, i) =>
+    '<div class="nav-item' + (i === 0 ? ' active' : '') + '" data-goto="' + p.key + '">' + p.icon + ' ' + p.name + '</div>').join('');
+nav.querySelectorAll('.nav-item').forEach(el => {
+    el.onclick = () => goto(el.dataset.goto);
+});
+function goto(key) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.goto === key));
+    document.querySelectorAll('section.page').forEach(el => el.classList.toggle('active', el.dataset.page === key));
+    document.querySelector('.content').scrollTop = 0;
+    location.hash = key;
+}
+if (location.hash) {
+    const k = location.hash.substring(1);
+    if (PAGES.some(p => p.key === k)) goto(k);
+}
+</script>
+</body>
+</html>

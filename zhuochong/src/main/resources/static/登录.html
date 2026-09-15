@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BlueAchive 游戏开发部 - 登录</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .bg-video {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            object-fit: cover;
+            object-position: bottom;
+            z-index: -1;
+        }
+        .login-title {
+            position: absolute;
+            bottom: 80px;
+            right: 60px;
+            font-size: 56px;
+            word-spacing: 5px;
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+            background: transparent;
+            border: none;
+            text-align: right;
+            cursor: pointer;
+            z-index: 1;
+        }
+        .login-box {
+            display: none;
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 65vw;
+            height: 75vh;
+            background: url('background/login_box.png') no-repeat center center / cover;
+            text-align: center;
+            z-index: 2;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transform: translateY(100%);
+            transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .login-box.show {
+            display: flex;
+            transform: translateY(0);
+        }
+        .login-box h2 {
+            color: #ffffff;
+            font-size: 64px;
+            letter-spacing: 12px;
+            margin-bottom: 20px;
+        }
+        .login-box .row {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-box label {
+            width: 140px;
+            color: #fff;
+            font-size: 28px;
+            text-align: right;
+            margin-right: 16px;
+        }
+        .login-box input {
+            width: 440px;
+            height: 56px;
+            padding: 0 16px;
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 6px;
+            background: rgb(187 255 247 / 0.25);
+            color: #fff;
+            font-size: 24px;
+            outline: none;
+        }
+        .login-box input:focus {
+            border-color: #88fffa;
+            background: rgba(128,128,128,0.35);
+        }
+        .login-box .btn-row {
+            margin-top: 50px;
+            display: flex;
+            gap: 28px;
+            justify-content: center;
+        }
+        .login-box .btn-row button {
+            width: 220px;
+            height: 64px;
+            border: none;
+            border-radius: 8px;
+            font-size: 28px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-login {
+            background: #88fffa;
+            color: #1a1a2e;
+            border: 7px solid transparent;
+        }
+        .btn-login:hover {
+            background: #5ddbd4;
+            border-color: #000;
+        }
+        .btn-register {
+            background: rgb(156 156 156 / 0.2);
+            color: #fff;
+            border: 7px solid transparent;
+        }
+        .btn-register:hover {
+            background: rgb(156 156 156 / 0.45);
+            border-color: #000;
+        }
+    </style>
+</head>
+<body>
+
+<video id="bgVideo" class="bg-video" autoplay loop muted playsinline>
+    <source src="background/login_background.mp4" type="video/mp4">
+</video>
+
+<h1 class="login-title" id="loginTitle">
+    <strong>游戏开发部 （点击此处登录）</strong>
+</h1>
+
+<div class="login-box" id="loginBox">
+    <h2>登录账号</h2>
+    <div class="row">
+        <label>用户名：</label><input type="text" placeholder="请输入用户名">
+    </div>
+    <div class="row">
+        <label>密　码：</label><input type="password" id="password" placeholder="请输入密码">
+    </div>
+    <div style="min-height:28px; line-height:28px; text-align:center; color:#f44; font-size:18px; margin-top: 10px;">
+        <span id="loginError"></span>
+    </div>
+    <div class="btn-row">
+        <button class="btn-login" onclick="doLogin()">登录</button>
+        <button class="btn-register">注册</button>
+    </div>
+</div>
+
+<script src="JS/axios.js"></script>
+<script>
+    const video = document.getElementById('bgVideo');
+    const title = document.getElementById('loginTitle');
+    const loginBox = document.getElementById('loginBox');
+
+    document.querySelector('.bg-video').addEventListener('click', function(e) {
+        e.stopPropagation();
+        video.muted = !video.muted;
+    });
+
+    title.addEventListener('click', function(e) {
+        e.stopPropagation();
+        video.muted = false;
+        title.style.display = 'none';
+        loginBox.classList.add('show');
+    });
+
+    // Enter 键跳转
+    document.querySelector('#loginBox input[type=text]').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('password').focus(); }
+    });
+    document.getElementById('password').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
+    });
+
+    function doLogin() {
+        const username = document.querySelector('#loginBox input[type=text]').value;
+        const userkey = document.getElementById('password').value;
+        const params = new URLSearchParams();
+        params.append('username', username);
+        params.append('userkey', userkey);
+        axios.post('/login', params).then(result => {
+            if (result.data.code === 1) {
+                const data = result.data.data;
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('identity', data.identity);
+                localStorage.setItem('name', data.name);
+                localStorage.setItem('username', username);
+                localStorage.setItem('userId', data.id || '');
+                location.href = '桌宠管理.html';
+            } else {
+                document.getElementById('loginError').textContent = result.data.message;
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

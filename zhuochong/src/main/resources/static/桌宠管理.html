@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>桌宠管理</title>
+    <link rel="stylesheet" href="CSS/桌宠管理.css?v=4">
+    <script src="JS/axios.js"></script>
+    <script src="JS/桌宠管理.js?v=11" defer></script>
+</head>
+<body>
+
+<!-- 背景音乐（浏览器限制：首次需用户交互后播放，此后循环） -->
+<!-- 桌宠图片 — 独立定位，不受对话框布局影响 -->
+<div class="pet-container">
+  <img id="petImg" src="aluona/aluona_jidong.png" alt="桌宠">
+</div>
+
+<!-- 选项区域 -->
+<div class="choices-wrapper" id="choicesWrapper">
+  <div class="choices-container" id="choicesContainer">
+  </div>
+</div>
+
+<!-- 对话历史面板 — 测试 -->
+<div class="history-panel" id="historyPanel">
+  <div class="panel-buttons">
+    <button class="btn-add" style="margin-left: -7px" onclick="handleAdd()">新增</button>
+    <div class="panel-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:26px;">
+      <button class="btn-nav" onclick="switchTable(-1)" title="上一个表">←</button>
+      <span class="panel-title" id="panelTitle" style="flex:none;white-space:nowrap;width:9em;text-align:center;">对话功能模块数据表</span>
+      <button class="btn-nav" onclick="switchTable(1)" title="下一个表">→</button>
+    </div>
+    <button class="btn-close" id="btnClose" style="margin-left: auto; margin-right: -3px" onclick="closePanel()">关闭</button>
+    <button class="btn-back" id="btnBack" style="margin-left: auto; display:none" onclick="goBack()">返回</button>
+  </div>
+  <div class="table-scroll">
+  <table class="dialog-data" id="historyTable">
+    <thead>
+      <tr>
+        <th>序号</th>
+        <th>用户操作</th>
+        <th>用户文本</th>
+        <th>桌宠回复</th>
+        <th>表情</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="historyBody">
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<!-- 对话框 — 置于页面底部 -->
+<div class="dialog-box dialog-clickable" id="dialogBox">
+  <div class="dialog-info">
+    <span class="dialog-name" id="dialogName">阿罗娜</span>
+    <span class="dialog-role" id="dialogRole">什亭之匣</span>
+  </div>
+  <hr class="dialog-divider">
+  <div class="dialog-text" id="dialogText"></div>
+  <div class="dialog-arrow" id="dialogArrow"></div>
+</div>
+
+<!-- 表情选择弹出容器 -->
+<div class="motion-popup" id="motionPopup">
+</div>
+
+<!-- 加载过渡图片 -->
+<img id="loadingImg" src="background/jiazai.jpg" class="loading-img" style="display:none;">
+
+</body>
+</html>

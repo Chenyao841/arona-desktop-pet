@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Live2D PIXI测试</title>
+<style>html,body{height:100vh;margin:0;overflow:hidden;background:rgba(1,1,1,0.004)}</style>
+</head><body>
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<script src="live2d/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
+<script src="live2d/node_modules/pixi-live2d-display/dist/cubism4.min.js"></script>
+<script>
+var msg = document.createElement('div');
+msg.style.cssText = 'position:fixed;bottom:20px;left:20px;color:#fff;font:16px sans-serif;background:rgba(0,0,0,0.7);padding:8px 16px;border-radius:4px;z-index:999';
+document.body.appendChild(msg);
+function log(t) { msg.textContent = t; console.log(t); }
+
+setTimeout(async function() {
+    if (typeof PIXI === 'undefined') { log('PIXI失败'); return; }
+    if (typeof PIXI.live2d === 'undefined') { log('pixi-live2d-display失败'); return; }
+    log('SDK就绪，加载模型...');
+
+    var app = new PIXI.Application({ transparent: true, width: window.innerWidth, height: window.innerHeight, antialias: true });
+    window.addEventListener('resize', function() { app.renderer.resize(window.innerWidth, window.innerHeight); });
+    document.body.appendChild(app.view);
+    try {
+        var model = await PIXI.live2d.Live2DModel.from('live2d/阿洛娜4_backup2025_0815_2142_backup2025_1017_2227.model3.json', { autoInteract: false });
+        model.x = window.innerWidth * 0.4;
+        model.y = window.innerHeight * 0.6;
+        model.scale.set(0.15);
+        app.stage.addChild(model);
+        log('模型显示成功！');
+    } catch(e) { log('错误: '+e.message); }
+}, 500);
+</script>
+</body></html>

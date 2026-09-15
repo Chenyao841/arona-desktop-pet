@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: zhuochong
+  main:
+    headless: false   # 桌面视觉需要 java.awt.Robot 截屏，必须关闭 headless（Spring Boot 默认 true 会致截屏失败）
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+
+server:
+  port: 8080
+
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: false
+
+tts:
+  # 本机路径全部支持环境变量覆盖（统一在项目根「环境变量配置.bat」里改）：ZC_PYTHON / ZC_TTS_DIR / ZC_TTS_AUTOSTART
+  python: ${ZC_PYTHON:}
+  api-dir: ${ZC_TTS_DIR:}
+  auto-start: ${ZC_TTS_AUTOSTART:true}
+
+netease:
+  node: ${ZC_NODE:}
+  app: ${ZC_NETEASE_APP:}
+  auto-start: ${ZC_NETEASE_AUTOSTART:true}
+
+# 数据库连接兜底（环境变量 ZC_DB_* 优先；改一处就够：环境变量配置.bat）
+zc:
+  db:
+    host: ${ZC_DB_HOST:127.0.0.1}
+    port: ${ZC_DB_PORT:3306}
+    name: ${ZC_DB_NAME:db03}
+    user: ${ZC_DB_USER:root}
+    password: ${ZC_DB_PASSWORD:}
+
+bili:
+  room-id: ${ZC_BILI_ROOM_ID:0}
+
+# 登录账号（本地默认账号：不读数据库，无需 adminlist）
+# identity 只要不等于「员工」就有写权限（管理页 isAdmin / 后端 Interceptor 按此判断）
+login:
+  username: 老师
+  password: 123456
+  name: 老师
+  identity: 管理员

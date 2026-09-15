@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>你画我猜</title>
+    <style>
+        /* ============================================================
+           你画我猜 · 画板窗口
+           窗口在 main.js 里按基础设置窗口的同一套参数开（同一张背景图 923×528 的宽高比、
+           基础设置里调的缩放比例 settingsScale、位置记忆、下方滑入动画、同级置顶）。
+           背景图在这里当**画板的装饰边框**，页面按「区域标注工具」标注的两块区域摆 UI：
+             顶部窗口区域  left 6.717%  top 6.629%  width 83.315% height 7.197% → 「题目：XX」居中大号 + ─ ✕
+             内容区域2     left 6.826%  top 13.826% width 83.099% height 78.409% → 工具条 + 半透明画布 + 猜测列表
+           ============================================================ */
+        * { box-sizing: border-box; }
+        html { overflow: hidden; }
+        * { scrollbar-width: none; }
+        *::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+        body {
+            background: transparent url('background/login_beijing2.png') no-repeat center center;
+            background-size: 100% 100%;
+            color: #14181f;
+            font-family: "Microsoft YaHei", sans-serif;
+            margin: 0; height: 100vh; overflow: hidden;
+            user-select: none;
+        }
+
+        /* 拖拽层：铺满整窗，只有内容区域2 压在它上面 → 可拖区域 = 顶部带 + 左右边 + 底部带 */
+        #dragLayer { position: absolute; inset: 0; -webkit-app-region: drag; z-index: 1; }
+
+        /* ===== 顶部窗口区域：题目居中大号 + 右下角 ─ ✕ ===== */
+        #titleRow {
+            position: absolute;
+            left: 6.717%; top: 6.629%; width: 83.315%; height: 7.197%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; font-weight: 700; letter-spacing: 2px; color: #ffffff;
+            text-shadow: 0 1px 3px rgba(12,30,52,.65), 0 0 12px rgba(12,30,52,.45);
+            z-index: 20;
+        }
+        #winTitle { -webkit-app-region: drag; }   /* 拖题目那行也能挪窗口（─ ✕ 仍可点） */
+        #winBtns { position: absolute; right: 2em; top: 50%; transform: translateY(-50%);
+            display: flex; gap: 6px; -webkit-app-region: no-drag; }
+        #winBtns button {
+            width: 30px; height: 22px; padding: 0; line-height: 1; font-size: 13px; cursor: pointer;
+            color: #16324f; background: #ffffff;
+            border: 1px solid rgba(22,50,79,.28); border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(22,50,79,.12);
+        }
+        #winBtns button:hover { background: #d4e6f1; }
+        #btnClose:hover { background: #f3c2c2; border-color: #c98a8a; color: #8c1f1f; }
+        body.no-electron #winBtns { display: none; }
+
+        /* ===== 内容区域2：工具条 + 画布 + 猜测列表（同时是 no-drag 区，画的时候不能拖窗口） ===== */
+        .app {
+            position: absolute;
+            left: 6.826%; top: 13.826%; width: 83.099%; height: 78.409%;
+            display: flex; flex-direction: column;
+            background: transparent;
+            -webkit-app-region: no-drag;
+            z-index: 10;
+        }
+
+        /* 工具条：左右各留两个字的内间距（细笔 / 公布答案 不贴边，和顶部题目那行一致） */
+        .tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2em 6px 2em; }
+        .tools .spacer { flex: 1; }
+        .tool {
+            background: rgba(255,255,255,.82); color: #1d2530;
+            border: 1px solid rgba(22,50,79,.22); border-radius: 6px;
+            padding: 4px 9px; font-size: 12.5px; cursor: pointer;
+        }
+        .tool:hover { background: #d4e6f1; }
+        .tool.active { background: #2f6fd0; color: #fff; border-color: #2f6fd0; font-weight: bold; }
+        .btn {
+            background: rgba(255,255,255,.9); color: #1d2530;
+            border: 1px solid rgba(22,50,79,.25); border-radius: 6px;
+            padding: 5px 12px; font-size: 13px; cursor: pointer;
+        }
+        .btn:hover { background: #d4e6f1; }
+        .btn.primary { background: #2f6fd0; color: #fff; border-color: #2f6fd0; font-weight: bold; }
+        .btn.primary:hover { background: #27599f; }
+        .btn:disabled { opacity: .55; cursor: default; }
+        .meta { font-size: 12.5px; color: #ffffff; text-shadow: 0 1px 3px rgba(12,30,52,.7); margin-left: 4px; }
+
+        /* 主区：画布（左，撑满） + 猜测列表（右，窄） */
+        .main { flex: 1; min-height: 0; display: flex; gap: 8px; }
+        .paper {
+            flex: 1; min-width: 0; position: relative;
+            /* ★ 半透明画布：只压一层淡白纸，背景图仍然透出来（老师的要求：不要完全遮挡背景图） */
+            background: rgba(255,255,255,.30);
+            border: 1px solid rgba(22,50,79,.22);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        #cv { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+        .side {
+            width: 27%; min-width: 132px; max-width: 220px; flex-shrink: 0;
+            background: rgba(255,255,255,.34);
+            border: 1px solid rgba(22,50,79,.18); border-radius: 6px;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .side-h { padding: 5px 9px; font-size: 12.5px; font-weight: 700; color: #16324f;
+            border-bottom: 1px solid rgba(22,50,79,.16); background: rgba(255,255,255,.32); }
+        .side-list { flex: 1; overflow-y: auto; padding: 6px 8px; font-size: 12.5px; }
+        .side-list .empty { color: #5a6878; }
+        .g-item { padding: 3px 0; border-bottom: 1px dashed rgba(22,50,79,.14); display: flex; gap: 6px; }
+        .g-item .no { color: #7b8797; }
+        .g-item .w { color: #1d2530; font-weight: 600; }
+        .g-item.ok .w { color: #1f9d5f; }
+
+        /* 底部状态条：显示阿罗娜这一轮说了什么 */
+        .status {
+            margin-top: 6px; min-height: 26px; padding: 4px 10px; border-radius: 6px;
+            background: rgba(255,255,255,.72); border: 1px solid rgba(22,50,79,.16);
+            font-size: 13px; color: #1d2530; display: flex; align-items: center; gap: 8px;
+        }
+        .status .who { color: #124a91; font-weight: 700; flex-shrink: 0; }
+        .status.ok { background: rgba(214,244,226,.86); border-color: #7fc79c; }
+        .status.bad { background: rgba(253,236,236,.86); border-color: #d9a3a3; }
+
+        /* 开局引导（没有进行中的对局时） */
+        .cover {
+            position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+            background: rgba(255,255,255,.55); z-index: 5;
+        }
+        .cover.show { display: flex; }
+        .cover .box { background: rgba(255,255,255,.95); border: 1px solid rgba(22,50,79,.25);
+            border-radius: 8px; padding: 16px 18px; text-align: center; box-shadow: 0 4px 16px rgba(12,30,52,.18); }
+        .cover h3 { margin: 0 0 6px; font-size: 16px; color: #124a91; }
+        .cover p { margin: 0 0 10px; font-size: 12.5px; color: #4d5c6d; }
+    </style>
+</head>
+<body>
+
+<div id="dragLayer"></div>
+
+<div id="titleRow">
+    <span id="winTitle">你画我猜</span>
+    <span id="winBtns">
+        <button id="btnMin" title="最小化">─</button>
+        <button id="btnClose" title="关闭 (Esc)">✕</button>
+    </span>
+</div>
+
+<div class="app">
+    <div class="tools">
+        <button class="tool active" data-size="4">细笔</button>
+        <button class="tool" data-size="8">中笔</button>
+        <button class="tool" data-size="14">粗笔</button>
+        <button class="tool" id="btnEraser">橡皮</button>
+        <button class="tool" id="btnUndo">撤销</button>
+        <button class="tool" id="btnClear">清空</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btnNext" style="display:none">下一局</button>
+        <button class="btn primary" id="btnSubmit">画好了</button>
+        <button class="btn" id="btnGiveUp">公布答案</button>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="main">
+        <div class="paper">
+            <canvas id="cv"></canvas>
+            <div class="cover" id="cover">
+                <div class="box">
+                    <h3 id="coverTitle">还没有进行中的对局</h3>
+                    <p id="coverDesc">先跟阿罗娜说「你画我猜」，或者在这里直接开一局：</p>
+                    <button class="btn primary" id="btnStart" data-d="0">随机难度开局</button>
+                    <button class="btn" id="btnStart1" data-d="1">简单</button>
+                    <button class="btn" id="btnStart2" data-d="2">中等</button>
+                    <button class="btn" id="btnStart3" data-d="3">困难</button>
+                </div>
+            </div>
+        </div>
+        <div class="side">
+            <div class="side-h">阿罗娜猜过的</div>
+            <div class="side-list" id="guessList"><div class="empty">还没开始猜～</div></div>
+        </div>
+    </div>
+    <div class="status" id="status"><span class="who">阿罗娜</span><span id="statusText">画好了就点「画好了」吧～</span></div>
+</div>
+
+<script>
+    // ============================================================
+    //  坐标系约定：笔迹一律按**归一化坐标 0~1** 存（相对画布可视区），
+    //  这样窗口被基础设置的缩放比例改大改小时，画面不会错位、导出也不失真。
+    //  导出用基准分辨率 800×500 重画一遍（实测视觉模型 >1000px 会拒答）。
+    // ============================================================
+    var DESIGN_W = 800, DESIGN_H = 500;
+    var BASE_SIZE = 4;                     // 细笔的基准线宽（其他按比例放大）
+    var cv = document.getElementById('cv');
+    var ctx = cv.getContext('2d');
+    var strokes = [];                      // [{size, erase, pts:[[nx,ny],...]}]
+    var brush = 4, eraser = false;
+    var drawing = false, curStroke = null;
+    var game = { id: 0, word: '', active: false, wordLen: 0, category: '', difficulty: 0, round: 0, guesses: [] };
+
+    var api = window.electronAPI;
+
+    // ---------- 画布尺寸随窗口变（按设备像素比，笔迹清晰） ----------
+    function fitCanvas() {
+        var dpr = window.devicePixelRatio || 1;
+        var r = cv.getBoundingClientRect();
+        var w = Math.max(1, Math.round(r.width * dpr));
+        var h = Math.max(1, Math.round(r.height * dpr));
+        if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+        redraw();
+    }
+    if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(cv);
+    window.addEventListener('resize', fitCanvas);
+
+    // ---------- 重画（撤销/清空/缩放都靠它） ----------
+    function paint(c, w, h, forExport) {
+        c.lineCap = 'round'; c.lineJoin = 'round';
+        for (var i = 0; i < strokes.length; i++) {
+            var s = strokes[i];
+            if (s.erase && !forExport) c.globalCompositeOperation = 'destination-out';
+            else c.globalCompositeOperation = 'source-over';
+            c.strokeStyle = (s.erase && forExport) ? '#ffffff' : '#1b2430';
+            c.lineWidth = Math.max(1, s.size * (w / DESIGN_W));
+            c.beginPath();
+            for (var j = 0; j < s.pts.length; j++) {
+                var x = s.pts[j][0] * w, y = s.pts[j][1] * h;
+                if (j === 0) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            if (s.pts.length === 1) c.lineTo(s.pts[0][0] * w + 0.01, s.pts[0][1] * h);
+            c.stroke();
+        }
+        c.globalCompositeOperation = 'source-over';
+    }
+    function redraw() { ctx.clearRect(0, 0, cv.width, cv.height); paint(ctx, cv.width, cv.height, false); }
+
+    // ---------- 画笔事件（整个笔画期间都抓在本窗口里：画板是独立窗口，不受桌宠区域穿透影响） ----------
+    function posOf(e) {
+        var r = cv.getBoundingClientRect();
+        return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+    }
+    cv.addEventListener('pointerdown', function (e) {
+        if (!game.active) return;
+        cv.setPointerCapture(e.pointerId);
+        drawing = true;
+        curStroke = { size: brush, erase: eraser, pts: [posOf(e)] };
+        strokes.push(curStroke);
+        redraw();
+        e.preventDefault();
+    });
+    cv.addEventListener('pointermove', function (e) {
+        if (!drawing || !curStroke) return;
+        curStroke.pts.push(posOf(e));
+        redraw();       // 笔画通常几十个点，整幅重画足够跟手（还能天然支持撤销/橡皮）
+        e.preventDefault();
+    });
+    function endStroke() { drawing = false; curStroke = null; }
+    cv.addEventListener('pointerup', endStroke);
+    cv.addEventListener('pointercancel', endStroke);
+    cv.addEventListener('pointerleave', endStroke);
+
+    // ---------- 工具按钮 ----------
+    var toolBtns = document.querySelectorAll('.tool[data-size]');
+    Array.prototype.forEach.call(toolBtns, function (b) {
+        b.addEventListener('click', function () {
+            brush = parseInt(b.getAttribute('data-size'), 10) || 4;
+            eraser = false;
+            setActive(b);
+        });
+    });
+    function setActive(btn) {
+        Array.prototype.forEach.call(document.querySelectorAll('.tool'), function (x) { x.classList.remove('active'); });
+        if (btn) btn.classList.add('active');
+    }
+    document.getElementById('btnEraser').addEventListener('click', function () {
+        eraser = !eraser;
+        if (eraser) setActive(this);
+        else { setActive(document.querySelector('.tool[data-size="' + brush + '"]')); }
+    });
+    document.getElementById('btnUndo').addEventListener('click', function () {
+        strokes.pop();
+        redraw();
+    });
+    document.getElementById('btnClear').addEventListener('click', function () {
+        if (!strokes.length) return;
+        strokes = [];
+        redraw();
+        setStatus('画布清空啦，重新画吧～', '');
+    });
+
+    // ---------- 导出：白底 + 裁到墨迹包围盒（留边距）→ PNG dataURL ----------
+    function exportImage() {
+        if (!strokes.length) return null;
+        var off = document.createElement('canvas');
+        off.width = DESIGN_W; off.height = DESIGN_H;
+        var c = off.getContext('2d');
+        c.fillStyle = '#ffffff'; c.fillRect(0, 0, DESIGN_W, DESIGN_H);
+        paint(c, DESIGN_W, DESIGN_H, true);
+
+        // 墨迹包围盒（考虑线宽的一半）
+        var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (var i = 0; i < strokes.length; i++) {
+            var s = strokes[i];
+            if (s.erase) continue;
+            var half = s.size / 2 + 1;
+            for (var j = 0; j < s.pts.length; j++) {
+                var x = s.pts[j][0] * DESIGN_W, y = s.pts[j][1] * DESIGN_H;
+                x0 = Math.min(x0, x - half); y0 = Math.min(y0, y - half);
+                x1 = Math.max(x1, x + half); y1 = Math.max(y1, y + half);
+            }
+        }
+        if (x1 < x0 || y1 < y0) return null;
+        var pad = 12;                                     // 留白，免得线条贴边
+        x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
+        x1 = Math.min(DESIGN_W, Math.ceil(x1 + pad)); y1 = Math.min(DESIGN_H, Math.ceil(y1 + pad));
+        var cw = Math.max(8, x1 - x0), ch = Math.max(8, y1 - y0);
+
+        var out = document.createElement('canvas');
+        out.width = cw; out.height = ch;
+        var oc = out.getContext('2d');
+        oc.fillStyle = '#ffffff'; oc.fillRect(0, 0, cw, ch);
+        oc.drawImage(off, x0, y0, cw, ch, 0, 0, cw, ch);
+        return out.toDataURL('image/png');
+    }
+
+    // ---------- 与后端交互 ----------
+    function setStatus(text, cls) {
+        document.getElementById('statusText').textContent = text || '';
+        var el = document.getElementById('status');
+        el.className = 'status' + (cls ? ' ' + cls : '');
+    }
+    // 「下一局」按键：只在**一局结束之后**出现（在「画好了」左边），对局进行中/无对局时隐藏
+    function setNextVisible(v) {
+        var b = document.getElementById('btnNext');
+        if (b) b.style.display = v ? '' : 'none';
+    }
+    function post(url, body) {
+        return fetch(url, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {})
+        }).then(function (r) { return r.json(); });
+    }
+    function get(url) { return fetch(url).then(function (r) { return r.json(); }); }
+
+    function applyState(d) {
+        if (!d || !d.active) {
+            game.active = false;
+            document.getElementById('winTitle').textContent = '你画我猜';
+            document.getElementById('meta').textContent = '';
+            document.getElementById('cover').classList.add('show');
+            document.getElementById('guessList').innerHTML = '<div class="empty">还没开始猜～</div>';
+            setNextVisible(false);          // 没有进行中的对局：用封面选难度开局，不需要「下一局」
+            return;
+        }
+        // 换了新一局 → 清掉上一局的笔画（不然新题会顶着旧画开局）
+        if (game.id && d.gameId !== game.id) { strokes = []; redraw(); }
+        game.id = d.gameId; game.word = d.word; game.active = true;
+        game.wordLen = d.wordLen; game.category = d.category; game.difficulty = d.difficulty;
+        game.round = d.round || 0; game.guesses = d.guesses || [];
+        document.getElementById('cover').classList.remove('show');
+        setNextVisible(false);              // 对局进行中：隐藏「下一局」
+        document.getElementById('winTitle').textContent = '题目：' + d.word;
+        var star = ['', '简单', '中等', '困难'][d.difficulty] || '';
+        document.getElementById('meta').textContent = '类别：' + (d.category || '—') + ' · 难度：' + star
+            + ' · ' + d.wordLen + ' 个字 · 已猜 ' + game.round + ' 轮';
+        renderGuesses();
+    }
+    function renderGuesses(highlightLast) {
+        var box = document.getElementById('guessList');
+        if (!game.guesses.length) { box.innerHTML = '<div class="empty">还没开始猜～</div>'; return; }
+        var html = '';
+        for (var i = 0; i < game.guesses.length; i++) {
+            var ok = highlightLast && i === game.guesses.length - 1;
+            html += '<div class="g-item' + (ok ? ' ok' : '') + '"><span class="no">' + (i + 1) + '.</span>'
+                + '<span class="w">' + escapeHtml(game.guesses[i]) + '</span></div>';
+        }
+        box.innerHTML = html;
+        box.scrollTop = box.scrollHeight;
+    }
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+        });
+    }
+
+    function loadCurrent() {
+        return get('/ai/pictionary/current').then(function (r) { applyState(r && r.data); }).catch(function () { });
+    }
+
+    // 提交画作 → 阿罗娜猜（判对由后端自动完成，老师不用点选项、也不用输入答案）
+    function submit() {
+        if (!game.active) { setStatus('还没有进行中的对局，先开一局吧～', ''); return; }
+        var img = exportImage();
+        if (!img) { setStatus('老师还没画呢，先画两笔再让阿罗娜猜吧～', ''); return; }
+        var btn = document.getElementById('btnSubmit');
+        btn.disabled = true;
+        setStatus('阿罗娜正在看老师的画…', '');
+        post('/ai/pictionary/guess', { game_id: game.id, image: img }).then(function (r) {
+            var d = (r && r.data) || {};
+            if (d.ok === false && d.failed) {
+                // 模型没给出结论：不计轮次，老师重画不亏
+                setStatus(d.say || '阿罗娜没看清楚，再画一次试试？', 'bad');
+                if (api && api.pictionaryEvent) api.pictionaryEvent({
+                    type: 'failed', say: d.say || '',
+                    saySituation: d.saySituation || '', sayExpression: d.sayExpression || '',
+                    sayAction: d.sayAction || '', saySound: d.saySound || '', sayMotion: d.sayMotion || ''
+                });
+                return;
+            }
+            game.round = d.round || game.round;
+            if (d.guess) { game.guesses.push(d.guess); }
+            renderGuesses(!!d.correct);
+            if (d.correct) {
+                setStatus('⭕ ' + (d.say || ('猜对啦！是「' + d.answer + '」')) + ' ' + (d.verdict || '')
+                    + '　—— 想再来一局就点「下一局」，或点画面任意位置选难度～', 'ok');
+                document.getElementById('winTitle').textContent = '答案是：' + d.answer;
+                game.active = false;
+                document.getElementById('cover').classList.remove('show');
+                setNextVisible(true);           // 一局结束 → 出现「下一局」
+            } else {
+                var extra = d.changes ? '（阿罗娜觉得改了：' + d.changes + '）' : '';
+                setStatus('❌ ' + (d.say || ('阿罗娜猜是「' + d.guess + '」')) + extra, 'bad');
+                document.getElementById('meta').textContent = '已猜 ' + game.round + ' 轮 · 继续在画上改，再点一次「画好了」就行';
+            }
+            // 交给桌宠页去说这句话 + 弹「继续 / 公布答案」按键
+            // （say = 这一轮"猜是什么"；verdict = 停顿之后的"猜对/没猜对"反应，中间留过渡时间）
+            // *Situation = 模型规则库里的情境词（画猜猜测/画猜猜对/画猜猜错…），*Expression = 情境表情部件 JSON，
+            // *Action = 动作名，*Sound = 音效视频，*Motion = PNG 模式的表情图
+            if (api && api.pictionaryEvent) {
+                api.pictionaryEvent({
+                    type: d.correct ? 'win' : 'wrong', guess: d.guess || '', say: d.say || '',
+                    verdict: d.verdict || '', changes: d.changes || '', remark: d.remark || '',
+                    saySituation: d.saySituation || '', sayExpression: d.sayExpression || '',
+                    sayAction: d.sayAction || '', saySound: d.saySound || '', sayMotion: d.sayMotion || '',
+                    verdictSituation: d.verdictSituation || '', verdictExpression: d.verdictExpression || '',
+                    verdictAction: d.verdictAction || '', verdictSound: d.verdictSound || '', verdictMotion: d.verdictMotion || '',
+                    round: game.round, answer: d.answer || '',
+                    wordLen: game.wordLen, difficulty: game.difficulty, ended: !!d.ended
+                });
+            }
+        }).catch(function (e) {
+            setStatus('提交失败：' + e.message, 'bad');
+        }).then(function () { btn.disabled = false; });
+    }
+
+    document.getElementById('btnSubmit').addEventListener('click', submit);
+    // 公布答案（画板按钮 / 桌宠页里点「公布答案」选项按键 都走这里，只此一份逻辑）
+    function doGiveUp() {
+        if (!game.id) { setStatus('还没有进行中的对局～', ''); return; }
+        var b = document.getElementById('btnGiveUp');
+        b.disabled = true;
+        post('/ai/pictionary/giveup', { game_id: game.id }).then(function (r) {
+            var d = (r && r.data) || {};
+            setStatus('📢 答案是「' + (d.answer || '') + '」 · ' + (d.say || '')
+                + '　—— 想再来一局就点「下一局」，或点画面任意位置选难度～', 'ok');
+            document.getElementById('winTitle').textContent = '答案是：' + (d.answer || '');
+            game.active = false;
+            setNextVisible(true);           // 一局结束 → 出现「下一局」
+            if (api && api.pictionaryEvent) {
+                api.pictionaryEvent({ type: 'giveup', answer: d.answer || '', say: d.say || '', round: d.round || 0,
+                    saySituation: d.saySituation || '', sayExpression: d.sayExpression || '',
+                    sayAction: d.sayAction || '', saySound: d.saySound || '', sayMotion: d.sayMotion || '',
+                    wordLen: game.wordLen, difficulty: game.difficulty, ended: true });
+            }
+        }).catch(function (e) { setStatus('操作失败：' + e.message, 'bad'); })
+          .then(function () { b.disabled = false; });
+    }
+    document.getElementById('btnGiveUp').addEventListener('click', doGiveUp);
+
+    // 开局（画板里直接开 / 点「下一局」都走这里；开局后照旧通知桌宠页说开场白）
+    function startNewGame(diff) {
+        post('/ai/pictionary/start', { difficulty: diff || 0 }).then(function (r) {
+            var dd = (r && r.data) || {};
+            if (!dd.ok) { setStatus(dd.say || '开局失败，词库可能是空的～', 'bad'); return; }
+            strokes = []; redraw();
+            applyState(dd);                       // 内部会隐藏「下一局」
+            setStatus('题目是「' + dd.word + '」，画好了就点「画好了」～', '');
+            if (api && api.pictionaryEvent) {
+                api.pictionaryEvent({ type: 'started', gameId: dd.gameId, wordLen: dd.wordLen,
+                    category: dd.category, difficulty: dd.difficulty });
+            }
+        }).catch(function (e) { setStatus('开局失败：' + e.message, 'bad'); });
+    }
+    // 封面上的 4 个难度按钮（随机/简单/中等/困难）
+    Array.prototype.forEach.call(document.querySelectorAll('#btnStart, #btnStart1, #btnStart2, #btnStart3'), function (b) {
+        b.addEventListener('click', function () {
+            startNewGame(parseInt(b.getAttribute('data-d'), 10) || 0);
+        });
+    });
+    // 「下一局」：沿用上一局的难度直接开新局（想换难度就点画面任意位置，用封面的难度按钮）
+    document.getElementById('btnNext').addEventListener('click', function () {
+        startNewGame(game.difficulty || 0);
+    });
+    // 一局结束后，点画面任意位置 → 弹出「还没有进行中的对局」（选新难度开局）
+    document.querySelector('.paper').addEventListener('click', function () {
+        if (game.active) return;
+        var cover = document.getElementById('cover');
+        if (cover.classList.contains('show')) return;
+        cover.classList.add('show');
+        setStatus('一局结束啦～ 选个难度就能开下一局（也可以直接点上面那个「下一局」）。', '');
+    });
+
+    // ---------- 窗口按钮 / 快捷键 ----------
+    if (!api) {
+        document.body.classList.add('no-electron');
+    } else {
+        document.getElementById('btnMin').addEventListener('click', function () { api.minimize(); });
+        document.getElementById('btnClose').addEventListener('click', function () {
+            if (game.active && game.id) {
+                // 关掉画板 = 这一局作废（桌宠那边会收到 closed 事件收尾）
+                post('/ai/pictionary/quit', { game_id: game.id }).catch(function () { });
+            }
+            api.close();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { document.getElementById('btnClose').click(); }
+        });
+        // 桌宠页发了命令（刷新题目 / 让它公布答案）/ 自己切回来时刷新一下当前局
+        if (api.onBoardRefresh) api.onBoardRefresh(function (cmd) {
+            if (cmd === 'giveup') { doGiveUp(); return; }
+            loadCurrent();
+        });
+        window.addEventListener('focus', function () { if (!game.active) loadCurrent(); });
+    }
+
+    fitCanvas();
+    loadCurrent();
+</script>
+</body>
+</html>

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>区域标注工具</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; background: #1a1d24; color: #eee; margin: 0; padding: 16px; }
+h1 { font-size: 18px; margin: 0 0 10px; color: #7ACBF6; }
+.row { margin: 6px 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+select, input, button { font-size: 13px; padding: 4px 8px; background: #262b36; color: #eee; border: 1px solid #4a5568; border-radius: 4px; }
+button { cursor: pointer; }
+button:hover { background: #333b4a; }
+#canvasWrap { position: relative; margin-top: 10px; display: inline-block; }
+canvas { border: 1px solid #444; background: #000; display: block; max-width: 100%; }
+#tip { font-size: 12px; color: #9aa; margin: 8px 0; }
+#regions { margin-top: 12px; }
+.region-item { display: inline-flex; align-items: center; gap: 8px; background: #262b36; border: 1px solid #4a5568; border-radius: 4px; padding: 4px 8px; margin: 4px 6px 0 0; font-size: 13px; }
+.region-item .del { color: #f66; cursor: pointer; }
+.region-item .use { color: #7ACBF6; cursor: pointer; margin-left: 4px; }
+#msg { color: #7ACBF6; font-size: 13px; margin-top: 8px; min-height: 18px; }
+.coord { color: #ffd479; }
+</style>
+</head>
+<body>
+<h1>🎯 区域标注工具</h1>
+<div class="row">
+    <span style="color:#9aa;font-size:12px">通用开发工具：为「雀魂麻将读牌」「蔚蓝档案抽卡」等屏幕识别功能标注区域（坐标自动换算到 2560 基准）</span>
+</div>
+<div class="row">
+    <label>选择截图：</label>
+    <select id="imgSel"></select>
+    <button onclick="loadImage()">加载</button>
+    <button onclick="document.getElementById('filePick').click()" title="从电脑里选一张图片放进标注区（不放服务器，只在本地打开）">📁 导入图片…</button>
+    <input id="filePick" type="file" accept="image/*" style="display:none">
+    <span style="color:#9aa;font-size:12px">提示：建议用桌宠实机截屏（desktop_vision_log/mahjong_*.png），拖框标注摸牌区、按钮等</span>
+</div>
+<div id="tip">① 加载截图（或导入本机图片）→ ② 在图上<b>按住鼠标左键拖出矩形</b>框住目标区域 → ③ 输入区域名（如「摸牌区」「跳过」「碰」）→ ④ 保存。坐标按图片<b>宽度</b>换算到 2560 基准。</div>
+<div id="canvasWrap">
+    <canvas id="cv"></canvas>
+</div>
+<div class="row">
+    <label>区域名：</label>
+    <input id="name" placeholder="如：摸牌区" style="width:140px">
+    <span class="coord" id="coords">未选择区域</span>
+    <button onclick="saveRegion()">保存区域</button>
+    <button onclick="resetDrag()">清除选择</button>
+    <button onclick="copyCoords()" title="复制当前选框的原图像素坐标（JSON，含图片宽高），给改 UI 用">📋 复制像素坐标</button>
+</div>
+<div class="row" style="margin-top:6px">
+    <label style="color:#9aa;font-size:12px">XY 数值输入（图像像素坐标）：</label>
+    <span>x1<input id="fx1" type="number" style="width:64px"></span>
+    <span>y1<input id="fy1" type="number" style="width:64px"></span>
+    <span>x2<input id="fx2" type="number" style="width:64px"></span>
+    <span>y2<input id="fy2" type="number" style="width:64px"></span>
+    <button onclick="applyXY()">应用到选框</button>
+    <button onclick="fillFromBox()">选框填入</button>
+    <span style="color:#9aa;font-size:12px">提示：手牌区可先粗拖出整排，再按每张牌宽/高逐格输入 x 坐标精确定位 13 个槽，避免重合/大小不一</span>
+</div>
+<div class="row" style="margin-top:6px">
+    <button onclick="saveEyeLevel()">存为眼睛高度（取选框中心Y）</button>
+    <span id="eyeInfo" style="color:#7ACBF6;font-size:12px"></span>
+    <span style="color:#9aa;font-size:12px">用于桌宠视线/头部跟随的垂直零点：加载一张能看到桌宠眼睛的截图，框住眼睛高度（细条即可）→ 点此按钮</span>
+</div>
+<div class="row" style="margin-top:12px;justify-content:space-between;align-items:center">
+    <span style="color:#9aa;font-size:13px">已保存区域（默认只显示最近修改的一行）：</span>
+    <button id="regToggle" onclick="toggleRegions()" style="display:none">展开全部 ▾</button>
+</div>
+<div id="regions"></div>
+<div id="msg"></div>
+
+<script>
+let img = null, imgW = 0, imgH = 0, scale = 1;
+let dragStart = null, dragEnd = null, dragging = false;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+
+function msg(t) { document.getElementById('msg').textContent = t; }
+
+let imgList = [];        // 可选图片：[{name,url,group}]
+let imgUrl = '';         // 当前已加载图片的 URL
+
+// 图片清单：按 group 分成 optgroup（麻将参考截屏 / 实机截屏 / 导入的图片）
+// 兼容旧接口：老后端返回的是「文件名字符串数组」，这里统一成 {name,url,group}，页面不会因为没重启后端而失效
+function normalizeImgList(data) {
+    if (!Array.isArray(data)) return [];
+    return data.map(it => {
+        if (it && typeof it === 'object' && it.url) return it;
+        const name = String(it);
+        return { name: name, group: '未见分组（旧接口）', url: '/麻将参考截屏/' + encodeURIComponent(name) };
+    });
+}
+fetch('/ai/mahjong/calibration-files').then(r => r.json()).then(d => {
+    imgList = normalizeImgList(d.data);
+    renderImgSelect();
+    if (imgList.length) loadImage();
+}).catch(() => msg('加载文件列表失败'));
+
+function renderImgSelect(selectUrl) {
+    const sel = document.getElementById('imgSel');
+    sel.innerHTML = '';
+    const groups = {};
+    imgList.forEach(it => {
+        const g = it.group || '其它';
+        (groups[g] = groups[g] || []).push(it);
+    });
+    Object.keys(groups).forEach(g => {
+        const og = document.createElement('optgroup');
+        og.label = g + '（' + groups[g].length + '）';
+        groups[g].forEach(it => {
+            const o = document.createElement('option');
+            o.value = it.url;
+            o.textContent = it.name;
+            og.appendChild(o);
+        });
+        sel.appendChild(og);
+    });
+    if (selectUrl) sel.value = selectUrl;
+}
+
+// 统一的「把一张图放进标注区」：服务端截屏与「导入图片」都走这里
+function setImage(i, label) {
+    img = i; imgW = i.naturalWidth; imgH = i.naturalHeight;
+    const maxW = Math.min(1200, window.innerWidth - 60);
+    scale = maxW / imgW;
+    cv.width = Math.round(imgW * scale);
+    cv.height = Math.round(imgH * scale);
+    draw();
+    msg('已加载 ' + label + '（' + imgW + 'x' + imgH + '）'
+        + '，拖框标注；坐标按宽度等比换算到 2560 基准（长宽比不变形）');
+}
+
+function loadImage() {
+    const url = document.getElementById('imgSel').value;
+    if (!url) return;
+    const i = new Image();
+    i.onload = () => {
+        imgUrl = url;
+        let label = url.split('/').pop();
+        try { label = decodeURIComponent(label); } catch (e) {}
+        setImage(i, label);
+    };
+    i.onerror = () => msg('无法加载图片：' + url);
+    i.src = url;
+}
+
+// 导入本机图片：FileReader → dataURL → 先**落盘**到 static/标注图片/，再按 URL 加载。
+// 落盘之后它会出现在下拉框的「导入的图片」里，下次打开还在（该目录在 WebConfig 里是文件系统直出，免 rebuild）。
+document.getElementById('filePick').addEventListener('change', function(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        msg('正在保存图片到 标注图片/ …');
+        fetch('/ai/mahjong/regions/upload-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: f.name, dataUrl: reader.result })
+        }).then(r => r.json()).then(d => {
+            if (d.code === 1 && d.data && d.data.ok) {
+                msg(d.data.message + '　已加入下拉框「导入的图片」');
+                imgUrl = d.data.url;
+                return fetch('/ai/mahjong/calibration-files').then(r => r.json()).then(l => {
+                    imgList = normalizeImgList(l.data).length ? normalizeImgList(l.data) : imgList;
+                    renderImgSelect(d.data.url);
+                    loadImage();
+                });
+            }
+            // 落盘失败也要能用：先只在本地标注，并明确提示没保存
+            msg(((d.data && d.data.message) || '保存图片失败') + ' —— 本次只在页面临时可用，未落盘');
+            const i = new Image();
+            i.onload = () => { imgUrl = ''; setImage(i, f.name + '（未保存到磁盘）'); };
+            i.src = reader.result;
+        }).catch(err => msg('保存图片失败：' + (err.message || '网络错误')));
+    };
+    reader.onerror = () => msg('读取文件失败');
+    reader.readAsDataURL(f);
+    e.target.value = '';   // 清掉，方便再导入同一个文件
+});
+
+function draw() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (!img) return;
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    drawSavedRegions();   // 已保存区域画回图上（青色细框），便于肉眼核对换算有没有偏差
+    if (dragStart && dragEnd) {
+        const x = Math.min(dragStart.x, dragEnd.x), y = Math.min(dragStart.y, dragEnd.y);
+        const w = Math.abs(dragEnd.x - dragStart.x), h = Math.abs(dragEnd.y - dragStart.y);
+        ctx.strokeStyle = '#ffd479'; ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(255,212,121,0.15)';
+        ctx.fillRect(x, y, w, h);
+        // 同时显示：原图像素坐标（设计用）+ 2560 基准（游戏运行时用）
+        const ix1 = Math.round(x / scale), iy1 = Math.round(y / scale);
+        const ix2 = Math.round((x + w) / scale), iy2 = Math.round((y + h) / scale);
+        const k = 2560 / Math.max(1, imgW);
+        document.getElementById('coords').textContent =
+            '像素 [' + ix1 + ',' + iy1 + ']→[' + ix2 + ',' + iy2 + ']（宽' + (ix2 - ix1) + ' 高' + (iy2 - iy1) + '）'
+            + '　|　2560基准 [' + Math.round(ix1 * k) + ',' + Math.round(iy1 * k) + ']→['
+            + Math.round(ix2 * k) + ',' + Math.round(iy2 * k) + ']';
+        syncFields();
+    }
+}
+
+// 把已保存区域按各自标注时的图片宽度换算回当前图，画成细框 + 名字
+function regionRectOnImage(rg) {
+    if (!rg || !img) return null;
+    const px = rg.px;
+    if (px && rg.imageWidth) {
+        const k = imgW / rg.imageWidth;   // 同一张图 → k=1，完全无损
+        return { x1: px.x1 * k, y1: px.y1 * k, x2: px.x2 * k, y2: px.y2 * k };
+    }
+    const s = 2560 / Math.max(1, imgW);   // 旧数据没有 px：从 2560 基准反算
+    return { x1: rg.x1 / s, y1: rg.y1 / s, x2: rg.x2 / s, y2: rg.y2 / s };
+}
+function drawSavedRegions() {
+    if (!img || !regionsData) return;
+    ctx.font = '12px "Microsoft YaHei", sans-serif';
+    Object.keys(regionsData).forEach(name => {
+        const r = regionRectOnImage(regionsData[name]);
+        if (!r) return;
+        const x = r.x1 * scale, y = r.y1 * scale, w = (r.x2 - r.x1) * scale, h = (r.y2 - r.y1) * scale;
+        ctx.strokeStyle = 'rgba(122,203,246,0.95)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(122,203,246,0.95)';
+        ctx.fillText(name, x + 2, Math.max(11, y - 3));
+    });
+}
+
+cv.addEventListener('mousedown', e => {
+    const r = cv.getBoundingClientRect();
+    dragStart = { x: e.clientX - r.left, y: e.clientY - r.top };
+    dragEnd = null;
+    dragging = true; // 开始拖动
+});
+cv.addEventListener('mousemove', e => {
+    if (!dragging) return; // 松开后选框固定不动（可点保存）
+    const r = cv.getBoundingClientRect();
+    dragEnd = { x: e.clientX - r.left, y: e.clientY - r.top };
+    draw();
+});
+// 松开鼠标：结束拖动，选框保持当前状态（dragStart/dragEnd 保留供保存读取）；
+// 下次重新按住拖动或点"清除选择"才重置。
+window.addEventListener('mouseup', () => { dragging = false; });
+
+function resetDrag() {
+    dragStart = null; dragEnd = null;
+    document.getElementById('coords').textContent = '未选择区域';
+    ['fx1', 'fy1', 'fx2', 'fy2'].forEach(id => document.getElementById(id).value = '');
+    draw();
+}
+
+// —— XY 数值输入：把输入框（图像像素坐标）应用到选框（画布像素），便于精确标注 13 个手牌槽等 ——
+function syncFields() {
+    const f = v => document.getElementById(v);
+    if (dragStart && dragEnd) {
+        const x1 = Math.min(dragStart.x, dragEnd.x) / scale, y1 = Math.min(dragStart.y, dragEnd.y) / scale;
+        const x2 = Math.max(dragStart.x, dragEnd.x) / scale, y2 = Math.max(dragStart.y, dragEnd.y) / scale;
+        f('fx1').value = Math.round(x1); f('fy1').value = Math.round(y1);
+        f('fx2').value = Math.round(x2); f('fy2').value = Math.round(y2);
+    }
+}
+function applyXY() {    const g = v => parseFloat(document.getElementById(v).value);
+    const x1 = g('fx1'), y1 = g('fy1'), x2 = g('fx2'), y2 = g('fy2');
+    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) { msg('请填写 x1/y1/x2/y2 数值'); return; }
+    if (x2 <= x1 || y2 <= y1) { msg('区域无效：x2/x1、y2/y1 必须为正'); return; }
+    dragStart = { x: x1 * scale, y: y1 * scale };
+    dragEnd = { x: x2 * scale, y: y2 * scale };
+    draw();
+    msg('已应用选框 [' + Math.round(x1) + ',' + Math.round(y1) + ']→[' + Math.round(x2) + ',' + Math.round(y2) + ']（宽' + Math.round(x2 - x1) + ' 高' + Math.round(y2 - y1) + '），可点保存');
+}
+function fillFromBox() { syncFields(); }
+
+// 复制当前选框的**原图像素坐标**（JSON，含图片宽高）—— 改 UI（如基础设置背景图的内容区）时直接用这个
+function copyCoords() {
+    if (!dragStart || !dragEnd) { msg('请先在图上拖框选择区域'); return; }
+    const x1 = Math.round(Math.min(dragStart.x, dragEnd.x) / scale);
+    const y1 = Math.round(Math.min(dragStart.y, dragEnd.y) / scale);
+    const x2 = Math.round(Math.max(dragStart.x, dragEnd.x) / scale);
+    const y2 = Math.round(Math.max(dragStart.y, dragEnd.y) / scale);
+    const text = JSON.stringify({ x1: x1, y1: y1, x2: x2, y2: y2, w: x2 - x1, h: y2 - y1, imageWidth: imgW, imageHeight: imgH });
+    const done = () => msg('已复制像素坐标：' + text);
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+        } else { fallbackCopy(text, done); }
+    } catch (e) { fallbackCopy(text, done); }
+    function fallbackCopy(t, cb) {
+        const ta = document.createElement('textarea');
+        ta.value = t; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); cb(); } catch (e) { msg('复制失败，请手动抄：' + t); }
+        document.body.removeChild(ta);
+    }
+}
+
+// 把某个已保存区域载入选框（用它的原图像素坐标，同一张图时完全无损），便于微调后重存
+function useRegion(name) {
+    const rg = regionsData[name];
+    if (!rg) return;
+    if (!img) { msg('请先加载图片，再点「载入」'); return; }
+    const px = rg.px;
+    let x1, y1, x2, y2;
+    if (px && rg.imageWidth) {
+        const k = imgW / rg.imageWidth;
+        x1 = px.x1 * k; y1 = px.y1 * k; x2 = px.x2 * k; y2 = px.y2 * k;
+        if (Math.abs(k - 1) > 0.0001) {
+            msg('注意：当前图宽 ' + imgW + ' 与标注时 ' + rg.imageWidth + ' 不同，已按比例换算');
+        }
+    } else {
+        const s = 2560 / Math.max(1, imgW);
+        x1 = rg.x1 / s; y1 = rg.y1 / s; x2 = rg.x2 / s; y2 = rg.y2 / s;
+    }
+    dragStart = { x: x1 * scale, y: y1 * scale };
+    dragEnd = { x: x2 * scale, y: y2 * scale };
+    document.getElementById('name').value = name;
+    draw();
+    msg('已把「' + name + '」载入选框，可直接改 XY 数值后重新保存（也可改个名字另存为新区域）');
+}
+
+// 存"眼睛高度"：取当前选框中心 Y 相对图高的比例，写入 pet_settings.lookEyeRatio（桥接读取作视线零点）
+function saveEyeLevel() {
+    if (!dragStart || !dragEnd || !imgH) { msg('请先在图上框住眼睛高度的位置（细横条即可）'); return; }
+    const y1 = Math.min(dragStart.y, dragEnd.y) / scale;
+    const y2 = Math.max(dragStart.y, dragEnd.y) / scale;
+    const cy = (y1 + y2) / 2;
+    const ratio = cy / imgH;
+    try {
+        const sets = JSON.parse(localStorage.getItem('pet_settings') || '{}');
+        sets.lookEyeRatio = ratio;
+        localStorage.setItem('pet_settings', JSON.stringify(sets));
+        // 同步到后端（桌面页启动时拉取，跨页面可靠）
+        fetch('/ai/pet-eye-ratio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ratio })
+        }).catch(() => {});
+        document.getElementById('eyeInfo').textContent = '已存：眼睛高度≈屏高 ' + (ratio * 100).toFixed(1) + '%（y=' + Math.round(cy) + '）';
+        msg('眼睛高度已保存（' + (ratio * 100).toFixed(1) + '%），刷新桌宠页生效');
+    } catch(e) { msg('保存失败：' + e.message); }
+}
+function showEyeInfo() {
+    try {
+        const sets = JSON.parse(localStorage.getItem('pet_settings') || '{}');
+        if (sets.lookEyeRatio) {
+            document.getElementById('eyeInfo').textContent = '当前眼睛高度≈' + (sets.lookEyeRatio * 100).toFixed(1) + '% 屏高';
+        }
+    } catch(e) {}
+}
+showEyeInfo();
+
+function saveRegion() {
+    const name = document.getElementById('name').value.trim();
+    if (!name) { msg('请先输入区域名'); return; }
+    if (!dragEnd) { msg('请先在图上拖框选择区域'); return; }
+    const x1 = Math.min(dragStart.x, dragEnd.x) / scale, y1 = Math.min(dragStart.y, dragEnd.y) / scale;
+    const x2 = Math.max(dragStart.x, dragEnd.x) / scale, y2 = Math.max(dragStart.y, dragEnd.y) / scale;
+    fetch('/ai/mahjong/regions/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, x1: Math.round(x1), y1: Math.round(y1), x2: Math.round(x2), y2: Math.round(y2), imageWidth: imgW, imageHeight: imgH })
+    }).then(r => r.json()).then(d => {
+        if (d.code === 1 && d.data && d.data.ok) {
+            msg(d.data.message || '已保存');
+            // 记下「最近修改」的区域名（跨刷新保留），收起状态下就显示这一条
+            lastRegionName = name;
+            try { localStorage.setItem('regionLastSaved', name); } catch(e) {}
+            loadRegions();
+        } else {
+            msg((d.data && d.data.message) || d.message || '保存失败');
+        }
+    }).catch(e => msg('保存失败：' + (e.message || '网络错误')));
+}
+
+// ===== 已保存区域：默认只显示「最近修改的一行」，点按钮才展开全部 =====
+// 最近修改的区域名记在 localStorage（regions.json 本身没有时间戳），
+// 没有记录时退化为「JSON 里最后一个」。
+let regionsData = {};
+let regionsExpanded = false;
+let lastRegionName = null;
+try { lastRegionName = localStorage.getItem('regionLastSaved'); } catch(e) {}
+
+function toggleRegions() {
+    regionsExpanded = !regionsExpanded;
+    renderRegions();
+}
+function renderRegions() {
+    const box = document.getElementById('regions');
+    const btn = document.getElementById('regToggle');
+    const names = Object.keys(regionsData || {});
+    box.innerHTML = '';
+    if (!names.length) {
+        btn.style.display = 'none';
+        box.innerHTML = '<span style="color:#9aa;font-size:13px">（还没有保存过区域）</span>';
+        return;
+    }
+    const latest = (lastRegionName && regionsData[lastRegionName]) ? lastRegionName : names[names.length - 1];
+    const order = names.slice();
+    order.sort((a, b) => (a === latest ? -1 : (b === latest ? 1 : 0)));
+    const show = regionsExpanded ? order : [latest];
+    show.forEach(name => {
+        const rg = regionsData[name] || {};
+        const px = rg.px;
+        const pxs = px ? ('像素 [' + px.x1 + ',' + px.y1 + ']→[' + px.x2 + ',' + px.y2 + ']')
+                       : ('2560 [' + rg.x1 + ',' + rg.y1 + ']→[' + rg.x2 + ',' + rg.y2 + ']（旧数据，无像素坐标）');
+        const div = document.createElement('div');
+        div.className = 'region-item';
+        div.innerHTML = '<b>' + name + '</b> ' + pxs
+            + ' <span style="color:#9aa">2560 [' + rg.x1 + ',' + rg.y1 + ']→[' + rg.x2 + ',' + rg.y2 + ']</span>'
+            + (rg.imageWidth ? ' <span style="color:#9aa">@' + rg.imageWidth + 'x' + (rg.imageHeight || '?') + '</span>' : '')
+            + (name === latest ? ' <span style="color:#7ACBF6">(最近修改)</span>' : '')
+            + (name === '摸牌区' ? ' <span style="color:#7ACBF6">(运行时生效)</span>' : '')
+            + '<span class="use" onclick="useRegion(\'' + name + '\')" title="把这条区域载入选框，便于微调后重存">载入</span>'
+            + '<span class="del" onclick="delRegion(\'' + name + '\')">✕</span>';
+        box.appendChild(div);
+    });
+    btn.style.display = names.length > 1 ? '' : 'none';
+    btn.textContent = regionsExpanded
+        ? ('收起 ▴（共 ' + names.length + ' 个）')
+        : ('展开全部 ▾（共 ' + names.length + ' 个）');
+}
+
+function loadRegions() {
+    fetch('/ai/mahjong/regions').then(r => r.json()).then(d => {
+        regionsData = (d.data && typeof d.data === 'object') ? d.data : {};
+        renderRegions();
+        if (img) draw();   // 区域框跟着一起重绘到图上
+    }).catch(() => {});
+}
+
+function delRegion(name) {
+    if (!confirm('删除区域「' + name + '」？')) return;
+    fetch('/ai/mahjong/regions/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+    }).then(r => r.json()).then(d => {
+        msg((d.data && d.data.message) || '已删除');
+        if (name === lastRegionName) {
+            lastRegionName = null;
+            try { localStorage.removeItem('regionLastSaved'); } catch(e) {}
+        }
+        loadRegions();
+    });
+}
+
+loadRegions();
+</script>
+</body>
+</html>

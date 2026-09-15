@@ -1,0 +1,30 @@
+# 构建产物
+target/
+build/
+dist/
+out/
+# 依赖
+node_modules/
+# 大素材 / 第三方资源（不进仓库，随体验包另行分发）
+zhuochong/src/main/resources/static/GPT_weights_v2/
+zhuochong/src/main/resources/static/SoVITS_weights_v2/
+zhuochong/src/main/resources/static/live2d/
+zhuochong/src/main/resources/static/background/
+zhuochong/src/main/resources/static/aluona/
+zhuochong/src/main/resources/static/参考音频/
+zhuochong/src/main/resources/static/soundeffects/
+zhuochong/src/main/resources/static/bottom/
+zhuochong/src/main/resources/static/麻将参考截屏/
+zhuochong/src/main/resources/static/麻将错题截屏/
+zhuochong/src/main/resources/static/标注图片/
+# 运行期产物
+tts_cache/
+desktop_vision_log/
+pictionary_shots/
+logs/
+*.log
+# 个人配置（连接串里可能有密码）
+环境变量配置.bat
+.idea/
+.vscode/
+*.iml

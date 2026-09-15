@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>桌宠设置</title>
+    <style>
+        * { box-sizing: border-box; }
+        html { overflow: hidden; }
+        /* 隐藏所有滚动条（竖的、横的都隐藏；内容仍可用滚轮/触控板滚动） */
+        * { scrollbar-width: none; }
+        *::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+        /* 背景图 login_beijing2.png（923×528，已裁掉多余透明边）：
+           窗口在 main.js 里按这张图的宽高比定尺寸，所以 background-size:100% 100% 不会变形。
+           两个区域的百分比都来自「区域标注工具」对这张图的标注：
+             顶部窗口区域 left 6.717% / top 6.629% / width 83.315% / height 7.197%
+             内容区域2    left 6.826% / top 13.826% / width 83.099% / height 78.409%
+           浅色底 → 全站黑字（不再用深色主题） */
+        body {
+            background: transparent url('background/login_beijing2.png') no-repeat center center;
+            background-size: 100% 100%;
+            color: #14181f;
+            font-family: "Microsoft YaHei", sans-serif;
+            margin: 0; height: 100vh; overflow: hidden;
+        }
+
+        /* ===== 拖拽层：铺满整窗，只有「内容区域2」那块盖在它上面（no-drag） =====
+           所以可拖区域 = 内容区域2 之外的整块图（顶部带 + 左右边 + 底部带） */
+        #dragLayer {
+            position: absolute; inset: 0;
+            -webkit-app-region: drag; z-index: 1;
+        }
+
+        /* ===== 顶部窗口区域：大号白字「设置」+ ─ ✕（左右各留约两个字的内间距） ===== */
+        #titleRow {
+            position: absolute;
+            left: 6.717%; top: 6.629%; width: 83.315%; height: 7.197%;
+            display: flex; align-items: center; gap: 10px;
+            padding: 0 2em;                       /* 2em = 两字左右（字号 22px → 每侧 44px） */
+            font-size: 22px;
+            background: transparent;              /* 区域本身透明，露出背景图 */
+            user-select: none; z-index: 20;
+        }
+        #winTitle { font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ffffff;
+            text-shadow: 0 1px 3px rgba(12,30,52,.65), 0 0 12px rgba(12,30,52,.45); }
+        #winBtns { margin-left: auto; display: flex; gap: 6px; -webkit-app-region: no-drag; }
+        #winBtns button {
+            width: 30px; height: 22px; padding: 0; line-height: 1; font-size: 13px; cursor: pointer;
+            color: #16324f; background: #ffffff;                  /* 按钮给上背景色 */
+            border: 1px solid rgba(22,50,79,.28); border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(22,50,79,.12);
+        }
+        #winBtns button:hover { background: #d4e6f1; }
+        #btnClose:hover { background: #f3c2c2; border-color: #c98a8a; color: #8c1f1f; }
+        body.no-electron #winBtns { display: none; }   /* 普通浏览器里隐藏窗口按钮 */
+
+        /* ===== 内容区域2：直角 + 背景透明 + 黑字（同时是 no-drag 区） ===== */
+        .app {
+            position: absolute;
+            left: 6.826%; top: 13.826%; width: 83.099%; height: 78.409%;
+            display: flex;
+            background: transparent;              /* 不再压黑色底，直接透出背景图 */
+            border: none;
+            border-radius: 0;                     /* 圆角 → 直角 */
+            overflow: hidden;                     /* 只在面板内部滚，窗口本身不出现滚动条 */
+            -webkit-app-region: no-drag;          /* 面板内正常点选，不拖窗口 */
+            z-index: 10;
+        }
+
+        /* ===== 左侧菜单（浅色半透明，贴近管理页风格） ===== */
+        .sidebar { width: 26%; min-width: 120px; max-width: 190px; flex-shrink: 0;
+            background: rgba(255,255,255,.34);
+            border-right: 1px solid rgba(22,50,79,.14);
+            display: flex; flex-direction: column; }
+        .brand { padding: 9px 12px 7px; font-size: 14px; color: #16324f; font-weight: 700; letter-spacing: 1px; }
+        .nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; }
+        .nav-item { padding: 7px 12px; font-size: 12.5px; cursor: pointer; color: #33404f; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; }
+        .nav-item:hover { background: rgba(255,255,255,.55); color: #10243a; }
+        .nav-item.active { background: rgba(47,111,208,.16); color: #124a91; border-left-color: #2f6fd0; }
+        .nav-item .dot { width: 7px; height: 7px; border-radius: 50%; background: #9aa7b6; flex-shrink: 0; }
+        .nav-item.on .dot { background: #1f9d5f; }
+        .side-foot { border-top: 1px solid rgba(22,50,79,.14); padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+        .side-foot button { width: 100%; text-align: left; background: rgba(255,255,255,.75); color: #23303f;
+            border: 1px solid rgba(22,50,79,.20); border-radius: 6px; padding: 6px 8px; font-size: 12px; cursor: pointer; }
+        .side-foot button:hover { background: #d4e6f1; }
+
+        /* ===== 右侧内容 ===== */
+        .content { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 14px 20px; }
+        .page { display: none; max-width: 100%; }
+        .page.active { display: block; }
+        .page h2 { font-size: 17px; color: #124a91; margin: 0 0 3px 0; }
+        .page .desc { font-size: 12px; color: #4d5c6d; margin-bottom: 10px; }
+
+        .section { background: rgba(255,255,255,.52); border: 1px solid rgba(22,50,79,.14);
+            border-radius: 0; padding: 4px 12px 10px; margin-bottom: 12px; }   /* 直角 */
+        .mod-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px dashed rgba(22,50,79,.20); margin-bottom: 4px; }
+        .mod-head .mod-title { font-size: 15px; color: #14181f; display: flex; align-items: center; gap: 8px; }
+        .mod-head .mod-title small { color: #5a6878; font-size: 12px; font-weight: normal; }
+        .row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid rgba(22,50,79,.10); gap: 12px; }
+        .row:last-child { border-bottom: none; }
+        .row.col { flex-direction: column; align-items: stretch; }
+        /* 两层布局的行：① 上层「标题 + 说明」左对齐成一行（说明跟在标题后面，不用另起行）
+           ② 下层放控件；控件允许换行，窄窗口（窗口调小）时不会把按钮挤出区域 */
+        .row.two { flex-direction: column; align-items: stretch; gap: 6px; }
+        .row.two label { text-align: left; }
+        .row.two label small { display: inline; margin-left: 8px; }
+        .row.two .ctl { flex-wrap: wrap; flex-shrink: 1; justify-content: flex-start; }
+        label { font-size: 13.5px; color: #1d2530; }
+        label small { color: #5a6878; font-size: 11.5px; display: block; margin-top: 2px; }
+        .val { font-size: 12px; color: #124a91; min-width: 44px; text-align: right; margin-left: 8px; }
+        .ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        input[type="range"] { width: 140px; accent-color: #2f6fd0; }
+        input[type="number"], input[type="text"] { background: #fff; border: 1px solid rgba(22,50,79,.28); color: #14181f; padding: 5px 8px; border-radius: 4px; font-size: 13px; }
+        input[type="number"] { width: 76px; text-align: center; }
+        input[type="text"] { width: 220px; }
+        input.err, select.err { border-color: #d03b3b !important; background: #fdecec !important; }
+        select { background: #fff; border: 1px solid rgba(22,50,79,.28); color: #14181f; padding: 5px 8px; border-radius: 4px; font-size: 13px; max-width: 300px; }
+        select option { background: #fff; color: #14181f; }
+        textarea.ta { width: 100%; min-height: 180px; background: #fff; border: 1px solid rgba(22,50,79,.28); color: #14181f; border-radius: 4px; padding: 9px 11px; font-size: 13px; font-family: inherit; line-height: 1.6; resize: vertical; box-sizing: border-box; }
+        .btn { background: #eef2f6; color: #1d2530; border: 1px solid rgba(22,50,79,.22); border-radius: 4px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+        .btn:hover { background: #d4e6f1; }
+        .btn.primary { background: #2f6fd0; color: #fff; border-color: #2f6fd0; font-weight: bold; }
+        .btn.primary:hover { background: #27599f; }
+        .btn.danger { color: #b02a2a; border-color: #d9a3a3; }
+        .btn.mini { padding: 3px 8px; font-size: 12px; }
+        .toggle { width: 44px; height: 24px; border-radius: 12px; background: #c3cbd6; position: relative; cursor: pointer; transition: .2s; flex-shrink: 0; }
+        .toggle.on { background: #2f6fd0; }
+        .toggle::after { content: ''; width: 20px; height: 20px; border-radius: 50%; background: #fff; position: absolute; top: 2px; left: 2px; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+        .toggle.on::after { left: 22px; }
+
+        .hint { font-size: 12px; color: #5a6878; }
+        .chip { display: inline-block; background: rgba(47,111,208,.14); color: #124a91; border-radius: 4px; padding: 2px 7px; font-size: 12px; }
+
+        /* ===== 指令库 / 映射表：表头灰底（照管理页风格） ===== */
+        .cmd-block { margin-top: 4px; }
+        .cmd-head { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 6px; gap: 10px; flex-wrap: wrap; }
+        .cmd-head .t { font-size: 14px; color: #14181f; }
+        table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+        table.tbl th { text-align: left; color: #16324f; font-weight: 700; padding: 6px; background: #d4e6f1; border-bottom: 1px solid rgba(22,50,79,.22); }
+        table.tbl td { padding: 5px 6px; border-bottom: 1px solid rgba(22,50,79,.12); vertical-align: middle; color: #1d2530; overflow-wrap: anywhere; word-break: break-word; }
+        table.tbl tr.bad td { background: rgba(208,59,59,.12); }
+        table.tbl input[type="text"] { width: 100%; max-width: 330px; }
+        table.tbl .cid { color: #5a6878; width: 42px; }
+        .empty { color: #5a6878; font-size: 12.5px; padding: 8px 2px; }
+
+        /* 防左右滑动条：内容不撑宽 */
+        .content img, .content pre { max-width: 100%; }
+        .content input, .content select, .content textarea { max-width: 100%; }
+
+        #toast { position: fixed; right: 18px; bottom: 16px; background: #ffffff; color: #16324f;
+            border: 1px solid rgba(22,50,79,.22); border-radius: 8px; padding: 10px 16px; font-size: 13px;
+            opacity: 0; transition: .25s; pointer-events: none; max-width: 420px; box-shadow: 0 6px 20px rgba(16,35,60,.18); }
+        #toast.show { opacity: 1; }
+        #toast.bad { background: #fdecec; border-color: #d9a3a3; color: #8c1f1f; }
+    </style>
+</head>
+<body>
+<!-- 可拖拽层：除了「内容区域2」之外的整块图（顶部带、左右边、底部带）都能拖动窗口 -->
+<div id="dragLayer"></div>
+<!-- 标题行：固定在图里标注的「顶部窗口区域」，区域本身透明（露出 login_beijing2.png），右侧自绘 ─ ✕ -->
+<div id="titleRow">
+    <span id="winTitle">设置</span>
+    <span id="winBtns">
+        <button id="btnMin" title="最小化">─</button>
+        <button id="btnClose" title="关闭 (Esc)">✕</button>
+    </span>
+</div>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">🎀 桌宠设置</div>
+        <div class="nav" id="nav"></div>
+        <div class="side-foot">
+            <button onclick="location.href='桌宠管理.html'">🗂 打开管理页</button>
+            <button onclick="window.open('操作册.html','_blank','width=1100,height=820')">📖 操作册</button>
+            <button onclick="window.open('区域标注工具.html','_blank','width=1400,height=900')">🎯 区域标注工具</button>
+            <button onclick="resetAll()">↩ 恢复默认设置</button>
+        </div>
+    </aside>
+
+    <main class="content">
+        <!-- ============ 基础外观 ============ -->
+        <section class="page" data-page="base">
+            <h2>基础外观</h2>
+            <div class="desc">桌宠本体的大小位置与对话框样式，改动立即保存</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">桌宠显示 <small>关闭后桌宠本体与模型都会隐藏</small></div>
+                    <div class="toggle" data-switch="petVisible"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>桌宠宽度 (px)</label><div class="ctl"><input type="number" data-key="petWidth" min="50" max="800" step="10"></div></div>
+                    <div class="row"><label>桌宠 X 位置 (px)</label><div class="ctl"><input type="number" data-key="petX" step="10"></div></div>
+                    <div class="row"><label>桌宠 Y 位置 (px)</label><div class="ctl"><input type="number" data-key="petY" step="10"></div></div>
+                    <div class="row"><label>对话框宽度 (px)</label><div class="ctl"><input type="number" data-key="dialogWidth" min="240" step="10"></div></div>
+                    <div class="row"><label>对话框内边距 (px)</label><div class="ctl"><input type="number" data-key="dialogPadding" min="8" step="2"></div></div>
+                    <div class="row">
+                        <label>基础设置窗口大小 <small>拖动松手后生效（拖动时窗口不动，免得滑块跟着跑）；窗口始终按背景图比例缩放（1.00× = 背景图原始尺寸，最清晰）</small></label>
+                        <div class="ctl">
+                            <input type="range" id="winScale" min="0.6" max="2" step="0.05" value="1">
+                            <span class="val" id="winScaleVal">1.00×</span>
+                        </div>
+                    </div>
+                    <div class="row"><label>默认音量</label><div class="ctl"><input type="range" data-key="defVolume" min="0" max="100" step="5"><span class="val" data-val="defVolume">40%</span></div></div>
+                    <div class="row"><label>选项文字化 <small>不弹选项按钮，直接显示为文字</small></label><div class="toggle" data-switch="choiceText"></div></div>
+                    <div class="row"><label>闲置提醒 <small>长时间无互动时自言自语</small></label><div class="toggle" data-switch="idle"></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="base"></div>
+            </div>
+        </section>
+
+        <!-- ============ 语音 TTS ============ -->
+        <section class="page" data-page="tts">
+            <h2>语音 TTS</h2>
+            <div class="desc">GPT-SoVITS 语音模型与参考音频（切换会写入后端 ai_config 并通知语音服务）</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">语音播报 <small>关闭后所有回复都不再朗读</small></div>
+                    <div class="toggle" data-switch="tts"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>语音模型 · GPT (.ckpt)</label><div class="ctl"><select id="gptModel" style="min-width:280px"><option>加载中…</option></select>
+                        <button class="btn" onclick="openFolder('gpt')">📂 GPT 文件夹</button></div></div>
+                    <div class="row"><label>语音模型 · SoVITS (.pth)</label><div class="ctl"><select id="sovitsModel" style="min-width:280px"><option>加载中…</option></select>
+                        <button class="btn" onclick="openFolder('sovits')">📂 SoVITS 文件夹</button></div></div>
+                    <div class="row"><label>当前生效模型 <small id="curModel">读取中…</small></label>
+                        <div class="ctl"><button class="btn primary" onclick="switchTtsModel()">切换语音模型</button></div></div>
+                    <div class="row two">
+                        <label>参考音频 <small id="referWav">读取中…</small></label>
+                        <div class="ctl">
+                            <select id="referSel" onchange="saveReferAudio(true)" style="flex:1 1 260px; min-width:0"><option>读取中…</option></select>
+                            <button class="btn" onclick="loadReferAudios(true)">🔄 刷新列表</button>
+                            <button class="btn" onclick="auditionRefer()">🔊 试听</button>
+                            <button class="btn" onclick="openFolder('refer')">📂 参考音频文件夹</button>
+                        </div>
+                    </div>
+                    <div class="row two">
+                        <label>参考文本 <small>必须与参考音频内容一致，否则容易拉长音/吞字；选了音频会自动带出同名 .lab/.txt 里的文本</small></label>
+                        <div class="ctl">
+                            <input type="text" id="referText" style="flex:1 1 320px; min-width:0" placeholder="参考音频对应的文字">
+                            <button class="btn primary" onclick="saveReferText()">💾 应用文本</button>
+                        </div>
+                    </div>
+                    <div class="row"><label>试听 <small>用当前模型说一句话，确认音色</small></label>
+                        <div class="ctl"><input type="text" id="ttsTestText" value="老师，听得清楚吗～" style="width:240px"><button class="btn" onclick="testTts()">▶ 试听</button></div></div>
+                    <div class="row two">
+                        <label>语音缓存 <small id="ttsCacheInfo">读取中…（缓存键含「参考音频+模型+语速+变体」，换音色会自动重新合成）</small></label>
+                        <div class="ctl">
+                            <button class="btn" onclick="clearTtsCache()">🧹 清空语音缓存</button>
+                            <button class="btn" onclick="loadTtsCacheInfo()">🔄 刷新占用</button>
+                        </div>
+                    </div>
+                    <div class="row"><label>合成变体 <small>句首语气词被拉长音/吞字时，去调试页试听后选定</small></label>
+                        <div class="ctl">
+                            <select id="ttsVariantSel" style="min-width:220px"></select>
+                            <button class="btn" onclick="window.open('语音合成调试.html','_blank','width=1000,height=800')">🔬 语音合成调试</button>
+                        </div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="tts"></div>
+            </div>
+        </section>
+
+        <!-- ============ Live2D ============ -->
+        <section class="page" data-page="live2d">
+            <h2>Live2D</h2>
+            <div class="desc">模型选择、位置偏移与表情映射表（映射表决定 PNG 表情对应的 Live2D 表情参数）</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">Live2D 模型模式 <small>关闭则使用 PNG 表情图片</small></div>
+                    <div class="toggle" data-switch="live2D"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row two">
+                        <label>模型文件 <small>读取 static/live2d 下的 *.model3.json</small></label>
+                        <div class="ctl">
+                            <select id="l2dModel" style="flex:1 1 220px; min-width:0; max-width:100%"><option>加载中…</option></select>
+                            <button class="btn" onclick="loadModels()">🔄 重新读取</button>
+                            <button class="btn" onclick="openFolder('live2d')">📂 模型文件夹</button>
+                        </div>
+                    </div>
+                    <div class="row"><label>模型 X 偏移 (px)</label><div class="ctl"><input type="number" data-key="live2dX" step="10"></div></div>
+                    <div class="row"><label>模型 Y 偏移 (px)</label><div class="ctl"><input type="number" data-key="live2dY" step="10"></div></div>
+                    <div class="row"><label>模型缩放</label><div class="ctl"><input type="range" data-key="live2dScale" min="0.2" max="3" step="0.05"><span class="val" data-val="live2dScale">1</span></div></div>
+                    <div class="row"><label>空闲随机视线 <small>空闲时眼睛自然到处看；出响应/朗读语音时自动回到「看着老师」；眯眼/闭眼表情期间不逛视，脸红时幅度减半</small></label><div class="toggle" data-switch="idleGaze"></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="live2d"></div>
+            </div>
+            <div class="section">
+                <div class="cmd-head">
+                    <div class="t">🙂 表情映射表 <span class="hint">图片名 → 表情文件（多个用 , 分隔，按顺序叠加）</span></div>
+                    <div>
+                        <button class="btn" onclick="openFolder('expressions')">📂 表情文件夹</button>
+                        <button class="btn" onclick="addExprRow()">+ 新增映射</button>
+                    </div>
+                </div>
+                <datalist id="exprFiles"></datalist>
+                <table class="tbl">
+                    <thead><tr><th class="cid">ID</th><th style="width:34%">图片名</th><th>表情文件</th><th style="width:110px"></th></tr></thead>
+                    <tbody id="exprBody"><tr><td colspan="4" class="empty">读取中…</td></tr></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============ AI 设定 ============ -->
+        <section class="page" data-page="ai">
+            <h2>AI 设定</h2>
+            <div class="desc">原管理页「桌宠基础设置」里的模型配置 / 桌宠信息 / AI 提示词都搬到这里（读写同一份数据）；语音模型与参考音频文件夹在「语音 TTS」页</div>
+
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">模型配置 <small>只写本页字段，其它字段（直播/弹幕/麻将/记忆开关）原样保留</small></div>
+                    <div class="ctl"><button class="btn primary" onclick="saveAiConfig()">💾 保存配置</button></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>API Key <small>DeepSeek 或兼容接口的密钥</small></label><div class="ctl"><input type="text" id="cfgApiKey" style="width:420px" placeholder="sk-..."></div></div>
+                    <div class="row"><label>API 地址</label><div class="ctl"><input type="text" id="cfgApiUrl" style="width:420px" placeholder="https://api.deepseek.com/v1/chat/completions"></div></div>
+                    <div class="row"><label>对话模型</label><div class="ctl"><input type="text" id="cfgModel" list="cfgModelList" style="width:260px" placeholder="deepseek-chat">
+                        <datalist id="cfgModelList"><option value="deepseek-chat"><option value="deepseek-reasoner"></datalist></div></div>
+                    <div class="row"><label>Max Tokens</label><div class="ctl"><input type="number" id="cfgMaxTokens" min="256" step="256"></div>
+                        <label style="margin-left:28px">Temperature</label><div class="ctl"><input type="number" id="cfgTemperature" min="0" max="2" step="0.1"></div></div>
+                    <div class="row"><label>语音转换地址 <small>GPT-SoVITS api.py 地址</small></label><div class="ctl"><input type="text" id="cfgTtsUrl" style="width:300px" placeholder="http://localhost:9880"></div></div>
+                    <div class="row"><label>参考音频路径</label><div class="ctl"><input type="text" id="cfgReferWav" style="width:460px" placeholder="参考 wav 绝对路径"></div></div>
+                    <div class="row"><label>参考文本 <small>必须与参考音频内容一致，否则容易拉长音/吞字</small></label><div class="ctl"><input type="text" id="cfgPromptText" style="width:460px" placeholder="参考音频对应的文字"></div></div>
+                    <div class="row"><label>语速</label><div class="ctl"><input type="number" id="cfgTtsSpeed" min="0.5" max="2" step="0.1"></div>
+                        <label style="margin-left:28px">样本步数</label><div class="ctl"><input type="number" id="cfgSampleSteps" step="4"></div>
+                        <button class="btn" onclick="loadAiSettings()">🔄 重新载入</button></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">桌宠 / 用户信息 <small>注入提示词的称呼与身份</small></div>
+                    <div class="ctl"><button class="btn primary" onclick="saveAiPetInfo()">💾 保存信息</button></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>AI 姓名</label><div class="ctl"><input type="text" id="cfgPetName" style="width:200px" placeholder="阿罗娜"></div>
+                        <label style="margin-left:24px">AI 身份</label><div class="ctl"><input type="text" id="cfgPetRole" style="width:260px" placeholder="什亭之匣"></div></div>
+                    <div class="row"><label>用户姓名</label><div class="ctl"><input type="text" id="cfgUserName" style="width:200px" placeholder="老师"></div>
+                        <label style="margin-left:24px">用户身份</label><div class="ctl"><input type="text" id="cfgUserRole" style="width:260px" placeholder="夏莱的老师"></div></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">AI 提示词 <small>按版本管理：先「查找」载入该版本，改完「提交」覆盖该版本</small></div>
+                    <div class="ctl">
+                        <label>版本</label><input type="number" id="cfgPromptVersion" min="1" value="1" style="width:80px;text-align:center">
+                        <button class="btn" onclick="loadPromptVersion()">🔍 查找</button>
+                        <button class="btn primary" onclick="saveAiPrompt()">💾 提交</button>
+                    </div>
+                </div>
+                <div class="mod-body">
+                    <div class="row col"><label>桌宠设定（system）<small id="cfgPromptHint">载入中…</small></label>
+                        <textarea id="cfgPromptSystem" class="ta" placeholder="输入桌宠人设..."></textarea></div>
+                    <div class="row col"><label>功能清单（function）</label>
+                        <textarea id="cfgPromptFunction" class="ta" placeholder="输入功能调用说明..."></textarea></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ 联网查询 ============ -->
+        <section class="page" data-page="websearch">
+            <h2>联网查询</h2>
+            <div class="desc">桌面版右侧的 🔍 按钮：点一次 → 下一条消息先联网检索再回答 → 发完自动关闭（不影响日常闲聊）</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">联网查询模块 <small>关闭时点 🔍 会提示未开启</small></div>
+                    <div class="toggle" data-switch="webSearchEnabled"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>博查 API Key <small>在博查 AI 开放平台申请（open.bochaai.com）</small></label>
+                        <div class="ctl"><input type="text" id="cfgWebSearchKey" style="width:420px" placeholder="sk-...">
+                            <button class="btn primary" onclick="saveWebSearchCfg()">💾 保存</button></div></div>
+                    <div class="row"><label>每次注入条数 <small>检索结果塞进提示词的条数，越多越耗 token</small></label>
+                        <div class="ctl"><input type="number" id="cfgWebSearchCount" min="1" max="20" step="1" style="width:80px;text-align:center">
+                            <button class="btn" onclick="saveWebSearchCfg()">💾 保存</button></div></div>
+                    <div class="row"><label>当前状态 <small id="wsStatus">读取中…</small></label>
+                        <div class="ctl"><button class="btn" onclick="checkWebSearch()">🔄 刷新状态</button></div></div>
+                    <div class="row col"><label>试搜一条 <small>用于确认 Key 可用、以及返回结构是否正常</small></label>
+                        <div class="ctl" style="width:100%">
+                            <input type="text" id="wsTestQuery" value="蔚蓝档案国服周年庆 日期" style="flex:1;min-width:260px">
+                            <button class="btn" onclick="testWebSearch()">🔍 测试检索</button>
+                        </div>
+                        <div id="wsTestOut" class="hint" style="margin-top:8px;white-space:pre-wrap;max-height:260px;overflow:auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ 陪玩点评 ============ -->
+        <section class="page" data-page="commentary">
+            <h2>陪玩点评</h2>
+            <div class="desc">桌面版右侧 🎬 按钮（或指令「陪我玩 看B站」）进入：每隔十几秒看一眼你的屏幕，冒一句弹幕式短评，像旁边坐着个观众；再点一次或说「别看了」退出</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">陪玩点评模块 <small>关闭后 🎬 按钮与「陪我玩」指令不可用</small></div>
+                    <div class="toggle" data-switch="commentaryEnabled"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>点评间隔 (秒) <small>到点后还会叠加"概率延长"，实际更长</small></label><div class="ctl"><input type="number" id="cmInterval" min="4" max="120" style="width:80px;text-align:center"></div>
+                        <label style="margin-left:28px">画面变化阈值 <small>0~255 平均差，越大越"懒得说"</small></label><div class="ctl"><input type="number" id="cmMinChange" min="0" max="60" style="width:80px;text-align:center"></div></div>
+                    <div class="row"><label>连续点评上限</label><div class="ctl"><input type="number" id="cmMaxStreak" min="1" max="20" style="width:80px;text-align:center"></div>
+                        <label style="margin-left:28px">之后静默 (秒)</label><div class="ctl"><input type="number" id="cmSilence" min="0" max="600" style="width:90px;text-align:center"></div></div>
+                    <div class="row"><label>刚聊完静默 (秒) <small>避免插话</small></label><div class="ctl"><input type="number" id="cmAfterTalk" min="0" max="600" style="width:90px;text-align:center"></div>
+                        <label style="margin-left:28px">概率延长间隔 (%)</label><div class="ctl"><input type="number" id="cmSkip" min="0" max="90" style="width:80px;text-align:center"></div></div>
+                    <div class="row"><label>本状态音量 (%) <small>只影响点评时的语音，比日常小声</small></label><div class="ctl"><input type="number" id="cmVolume" min="5" max="100" style="width:80px;text-align:center"></div>
+                        <label style="margin-left:28px">点评字数上限</label><div class="ctl"><input type="number" id="cmMaxChars" min="6" max="60" style="width:80px;text-align:center"></div></div>
+                    <div class="row"><label>截图留存 (分钟) <small>0=不留；仅用于调试</small></label><div class="ctl"><input type="number" id="cmKeepMin" min="0" max="1440" style="width:90px;text-align:center"></div>
+                        <label style="margin-left:28px">人工语境保持 (分钟)</label><div class="ctl"><input type="number" id="cmManualTtl" min="1" max="240" style="width:80px;text-align:center"></div></div>
+                    <div class="row"><label>点评 token 预算 <small>推理型视觉模型需留够"思考"空间；若试点评提示"没有产出正式回答"，把它调大（如 1600~2000）</small></label><div class="ctl"><input type="number" id="cmMaxTokens" min="200" max="4000" step="100" style="width:90px;text-align:center"></div></div>
+                    <div class="row"><label>点评出声</label><div class="toggle" data-switch="cmVoice"></div>
+                        <label style="margin-left:28px">允许自动判定语境</label><div class="toggle" data-switch="cmAutoDetect"></div>
+                        <div class="ctl"><button class="btn primary" onclick="saveCommentaryCfg()">💾 保存参数</button></div></div>
+                    <div class="row col"><label>试点评一次 <small>立刻截屏并按当前配置生成一句点评（结果只在这里显示，不会念出来）</small></label>
+                        <div class="ctl" style="width:100%">
+                            <input type="text" id="cmTestCtx" placeholder="可选：语境代码 bilibili / mahjong / bluearchive / work / other" style="flex:1;min-width:280px">
+                            <button class="btn" onclick="testCommentary()">🎬 试点评</button>
+                        </div>
+                        <div id="cmTestOut" class="hint" style="margin-top:8px;white-space:pre-wrap;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="section">
+                <div class="cmd-head">
+                    <div class="t">🎭 语境提示词 <span class="hint">每行一个场景；点评时按"人工告知 &gt; 自动判定 &gt; 默认"选用</span></div>
+                    <div><button class="btn" onclick="loadCommentary()">🔄 重新载入</button></div>
+                </div>
+                <table class="tbl">
+                    <thead><tr><th class="cid">ID</th><th style="width:18%">代码 / 名称</th><th>风格与限制（拼进视觉提示词）</th><th style="width:110px"></th></tr></thead>
+                    <tbody id="cmCtxBody"><tr><td colspan="4" class="empty">读取中…</td></tr></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============ 直播 ============ -->
+        <section class="page" data-page="live">
+            <h2>直播</h2>
+            <div class="desc">B站直播间弹幕互动</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">直播模式 <small>开启后阿罗娜以 VUP 身份回应弹幕</small></div>
+                    <div class="toggle" data-switch="liveMode"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>直播房间号</label><div class="ctl"><input type="number" id="roomId" min="1" placeholder="如 4198805" style="width:130px"></div></div>
+                    <div class="row"><label>弹幕抓取 <small>关闭后不再接收直播间弹幕</small></label><div class="toggle" data-switch="danmaku"></div></div>
+                    <div class="row"><label>B站 Cookie <small>弹幕接入所需（bili_jct=…; SESSDATA=…）</small></label>
+                        <div class="ctl"><input type="text" id="cfgBiliCookie" style="width:420px" placeholder="bili_jct=xxx; SESSDATA=xxx">
+                            <button class="btn" onclick="saveBiliCookie()">💾 保存</button></div></div>
+                    <div class="row"><label>弹幕互动冷却 <small>内置 10 秒，防止刷屏</small></label><div class="ctl"><span class="chip">10s</span></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="live"></div>
+            </div>
+        </section>
+
+        <!-- ============ 雀魂麻将 ============ -->
+        <section class="page" data-page="mahjong">
+            <h2>雀魂麻将</h2>
+            <div class="desc">读牌 / 出牌建议 / 自动打牌插件（区域坐标用「区域标注工具」维护）</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">麻将插件 <small>关闭后「看看我的牌」等指令不再生效</small></div>
+                    <div class="toggle" data-switch="mahjongEnabled"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>识别区域标注</label>
+                        <div class="ctl"><button class="btn" onclick="window.open('区域标注工具.html','_blank','width=1400,height=900')">🎯 打开区域标注工具</button></div></div>
+                    <div class="row"><label>当前状态 <small id="mjStatus">读取中…</small></label><div class="ctl"></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="mahjong"></div>
+            </div>
+        </section>
+
+        <!-- ============ 网络天才 ============ -->
+        <section class="page" data-page="game">
+            <h2>网络天才</h2>
+            <div class="desc">猜物小游戏（AI 猜你出的题 / 你猜 AI 出的题）</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">网络天才模块 <small>关闭后无法开局</small></div>
+                    <div class="toggle" data-switch="gameEnabled"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>游戏模型</label><div class="ctl">
+                        <select data-key="gameModel">
+                            <option value="deepseek-reasoner">deepseek-reasoner（推理，较慢）</option>
+                            <option value="deepseek-chat">deepseek-chat（通用，较快）</option>
+                        </select></div></div>
+                    <div class="row"><label>游戏快捷选项 <small>AI 提问后弹出「是 / 可能是 / 可能不是 / 不是」</small></label><div class="toggle" data-switch="gameQuick"></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="game"></div>
+            </div>
+        </section>
+
+        <!-- ============ 网易云听歌 ============ -->
+        <section class="page" data-page="music">
+            <h2>网易云听歌</h2>
+            <div class="desc">点歌、歌单与播放控制</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">网易云模块 <small>关闭后点歌/播放类指令全部失效</small></div>
+                    <div class="toggle" data-switch="neteaseEnabled"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>网易云音质</label><div class="ctl">
+                        <select data-key="neteaseLevel">
+                            <option value="standard">标准 128k</option>
+                            <option value="higher">较高 192k</option>
+                            <option value="exhigh">极高 320k</option>
+                            <option value="lossless">无损</option>
+                        </select></div></div>
+                    <div class="row"><label>网易云 UID <small>用于「播放收藏歌单」</small></label><div class="ctl"><input type="text" id="neteaseUid" placeholder="如 17814715274"></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="music"></div>
+            </div>
+        </section>
+
+        <!-- ============ 桌面视觉 ============ -->
+        <section class="page" data-page="vision">
+            <h2>桌面视觉</h2>
+            <div class="desc">屏幕截图识别与自动点击（AI 看屏幕、蔚蓝档案自动抽卡）</div>
+            <div class="section">
+                <div class="mod-head">
+                    <div class="mod-title">桌面视觉 <small>开启后 👁 按钮可把屏幕截图发给 AI</small></div>
+                    <div class="toggle" data-switch="desktopVision"></div>
+                </div>
+                <div class="mod-body">
+                    <div class="row"><label>截图日志目录</label><div class="ctl"><span class="chip">desktop_vision_log/</span></div></div>
+                    <div class="row"><label>抽卡参考图比对阈值 <small>越高越严格（抽卡流程写在 GachaService，改动需重启后端）</small></label><div class="ctl"><span class="chip">0.50</span></div></div>
+                </div>
+                <div class="cmd-block" data-cmd-module="vision"></div>
+            </div>
+        </section>
+    </main>
+</div>
+<div id="toast"></div>
+
+<script>
+// ================= 常量 =================
+const LS_KEY = 'pet_settings';
+const DEF = {
+    petWidth: 200, petX: 0, petY: 0, defVolume: 40, dialogWidth: 440, dialogPadding: 22,
+    live2dX: 0, live2dY: 0, live2dScale: 1,
+    choiceText: 0, idle: 1, tts: 1, live2D: 0, gameQuick: 1, desktopVision: 0,
+    petVisible: 1, gameEnabled: 1, neteaseEnabled: 1, mahjongEnabled: 1,
+    neteaseLevel: 'higher', gameModel: 'deepseek-reasoner'
+};
+const PAGES = [
+    { key: 'base',    icon: '🎀', name: '基础外观',   sw: 'petVisible',      def: 1 },
+    { key: 'tts',     icon: '🔊', name: '语音 TTS',   sw: 'tts',             def: 1 },
+    { key: 'live2d',  icon: '🧊', name: 'Live2D',     sw: 'live2D',          def: 0 },
+    { key: 'ai',      icon: '🧠', name: 'AI 设定',    sw: null,              def: 1 },
+    { key: 'websearch', icon: '🔍', name: '联网查询', sw: 'webSearchEnabled', def: 0 },
+    { key: 'live',    icon: '📺', name: '直播',       sw: 'liveMode',        def: 0 },
+    { key: 'mahjong', icon: '🀄', name: '雀魂麻将',   sw: 'mahjongEnabled',  def: 1 },
+    { key: 'game',    icon: '🎮', name: '网络天才',   sw: 'gameEnabled',     def: 1 },
+    { key: 'music',   icon: '🎵', name: '网易云听歌', sw: 'neteaseEnabled',  def: 1 },
+    { key: 'vision',  icon: '👁', name: '桌面视觉',   sw: 'desktopVision',   def: 0 },
+    { key: 'commentary', icon: '🎬', name: '陪玩点评', sw: 'commentaryEnabled', def: 0 }
+];
+
+let settings = {};
+let aiCfg = null;          // 后端 ai_config 缓存
+let cmdLib = [];           // 指令库缓存
+let exprMap = [];          // 表情映射缓存
+
+// ================= 工具 =================
+function toast(msg, bad) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = bad ? 'show bad' : 'show';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = ''; }, 2600);
+}
+function readSettings() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+}
+function writeSettings(patch) {
+    settings = Object.assign(readSettings(), patch || {});
+    localStorage.setItem(LS_KEY, JSON.stringify(settings));
+    syncOpener(patch || {});
+}
+/** 尽力同步已打开的桌面版窗口（同源 opener 时生效） */
+function syncOpener(patch) {
+    try {
+        const w = window.opener;
+        if (!w) return;
+        if (patch.tts != null && w.ttsEnabled !== undefined) w.ttsEnabled = !!patch.tts;
+        if (patch.idle != null && w.idleEnabled !== undefined) w.idleEnabled = !!patch.idle;
+        if (patch.choiceText != null && w.choiceTextMode !== undefined) w.choiceTextMode = !!patch.choiceText;
+        if (patch.desktopVision != null && w.desktopVision !== undefined) w.desktopVision = !!patch.desktopVision;
+        if (patch.neteaseEnabled != null && w.neteaseEnabled !== undefined) w.neteaseEnabled = !!patch.neteaseEnabled;
+        if (patch.gameEnabled != null && w.gameEnabled !== undefined) w.gameEnabled = !!patch.gameEnabled;
+        if (patch.mahjongEnabled != null && w.mahjongEnabled !== undefined) w.mahjongEnabled = !!patch.mahjongEnabled;
+        if (patch.liveMode != null && w.isLiveMode !== undefined) w.isLiveMode = !!patch.liveMode;
+    } catch (e) {}
+}
+/** 后端 ai_config 全量回写（避免覆盖其它字段） */
+function pushConfig(patch) {
+    const send = () => { Object.assign(aiCfg, patch); postConfig(); };
+    if (aiCfg) return send();
+    fetch('/ai/config').then(r => r.json()).then(d => {
+        if (d.code === 1 && d.data) { aiCfg = d.data; send(); }
+    }).catch(() => toast('后端配置读取失败', true));
+}
+function postConfig() {
+    fetch('/ai/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(aiCfg) })
+        .then(() => toast('已保存（后端 ai_config）'))
+        .catch(() => toast('后端保存失败', true));
+}
+
+// ================= 菜单 & 模块开关 =================
+function buildNav() {
+    const nav = document.getElementById('nav');
+    nav.innerHTML = PAGES.map((p, i) =>
+        '<div class="nav-item' + (i === 0 ? ' active' : '') + '" data-goto="' + p.key + '">' +
+        '<span class="dot"></span>' + p.icon + ' ' + p.name + '</div>').join('');
+    nav.querySelectorAll('.nav-item').forEach(el => {
+        el.onclick = () => goto(el.dataset.goto);
+    });
+    goto('base');
+}
+function goto(key) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.goto === key));
+    document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.dataset.page === key));
+    document.querySelector('.content').scrollTop = 0;
+}
+/** 模块开关：关闭后隐藏该页主体 */
+function applyModuleSwitch(key, on) {
+    const page = document.querySelector('.page[data-page="' + key + '"]');
+    if (!page) return;
+    const body = page.querySelector('.mod-body');
+    if (body) body.style.display = on ? '' : 'none';
+    const nav = document.querySelector('.nav-item[data-goto="' + key + '"]');
+    if (nav) nav.classList.toggle('on', !!on);
+}
+function setToggle(el, on) {
+    if (on) el.classList.add('on'); else el.classList.remove('on');
+}
+function isOn(id) {
+    const el = document.querySelector('.toggle[data-switch="' + id + '"]');
+    return el ? el.classList.contains('on') : false;
+}
+const SWITCH_KEYS = { petVisible: 'petVisible', choiceText: 'choiceText', idle: 'idle', tts: 'tts',
+    live2D: 'live2D', gameQuick: 'gameQuick', desktopVision: 'desktopVision',
+    gameEnabled: 'gameEnabled', neteaseEnabled: 'neteaseEnabled', mahjongEnabled: 'mahjongEnabled',
+    idleGaze: 'idleGaze' };
+// 陪玩点评开关是服务端配置（commentary_config.enabled），单独处理
+
+function bindToggles() {
+    document.querySelectorAll('.toggle[data-switch]').forEach(el => {
+        el.onclick = () => {
+            const key = el.dataset.switch;
+            const on = !el.classList.contains('on');
+            setToggle(el, on);
+            onSwitchChanged(key, on);
+        };
+    });
+}
+function onSwitchChanged(key, on) {
+    // 1) 前端行为类 → localStorage
+    if (SWITCH_KEYS[key]) {
+        const patch = {};
+        patch[SWITCH_KEYS[key]] = on ? 1 : 0;
+        writeSettings(patch);
+        if (key === 'idleGaze') notifyIdleGaze(on);
+    }
+    // 2) 功能类 → 后端
+    if (key === 'liveMode') { writeSettings({ liveMode: on ? 1 : 0 }); pushConfig({ live_mode: on ? 1 : 0 }); }
+    if (key === 'webSearchEnabled') { pushConfig({ web_search_enabled: on ? 1 : 0 }); setTimeout(checkWebSearch, 400); }
+    if (key === 'commentaryEnabled') { saveCommentarySwitch(on); }
+    if (key === 'danmaku') { pushConfig({ danmaku_enabled: on ? 1 : 0 }); }
+    if (key === 'mahjongEnabled') {
+        fetch('/ai/mahjong/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) })
+            .then(() => { toast(on ? '麻将插件已开启' : '麻将插件已关闭'); mjStatus(); })
+            .catch(() => toast('麻将开关保存失败', true));
+    }
+    // 3) 侧栏状态点 & 页面主体显隐
+    PAGES.forEach(p => { if (p.sw === key) applyModuleSwitch(p.key, on); });
+    if (key === 'live2D' && on) toast('已开启 Live2D，刷新桌面版后加载模型');
+}
+
+// ================= 字段自动保存 =================
+function bindFields() {
+    document.querySelectorAll('[data-key]').forEach(el => {
+        const key = el.dataset.key;
+        const handler = () => {
+            let v = el.value;
+            if (el.type === 'number' || el.type === 'range') { v = parseFloat(v); if (isNaN(v)) return; }
+            const patch = {}; patch[key] = v;
+            writeSettings(patch);
+            const valEl = document.querySelector('[data-val="' + key + '"]');
+            if (valEl) valEl.textContent = (key === 'defVolume') ? v + '%' : v;
+            toast('已保存：' + key + ' = ' + v);
+        };
+        el.addEventListener('change', handler);
+        if (el.type === 'range') {
+            let t = null;
+            el.addEventListener('input', () => { clearTimeout(t); t = setTimeout(handler, 250); });
+        }
+    });
+    // 房间号 / 网易云 UID（后端）
+    const room = document.getElementById('roomId');
+    room.addEventListener('change', () => {
+        const v = parseInt(room.value, 10);
+        if (!(v > 0)) { room.classList.add('err'); toast('房间号需为正整数', true); return; }
+        room.classList.remove('err');
+        fetch('/ai/config/room-id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_id: v }) })
+            .then(() => toast('房间号已保存')).catch(() => toast('保存失败', true));
+    });
+    const uid = document.getElementById('neteaseUid');
+    uid.addEventListener('change', () => {
+        const v = uid.value.trim();
+        if (!v) return;
+        fetch('/ai/config/netease-uid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ netease_uid: v }) })
+            .then(() => toast('网易云 UID 已保存')).catch(() => toast('保存失败', true));
+    });
+}
+
+// ================= 初始化数据 =================
+function loadLocal() {
+    settings = readSettings();
+    // 数值/下拉字段
+    document.querySelectorAll('[data-key]').forEach(el => {
+        const key = el.dataset.key;
+        let v = settings[key];
+        if (v == null) v = DEF[key];
+        if (v != null) el.value = v;
+        const valEl = document.querySelector('[data-val="' + key + '"]');
+        if (valEl) valEl.textContent = (key === 'defVolume') ? v + '%' : v;
+    });
+    // 开关（模块总开关：liveMode 以后端为准，稍后 loadBackend 覆盖）
+    PAGES.forEach(p => {
+        const on = (settings[p.sw] != null) ? !!settings[p.sw] : !!p.def;
+        const el = document.querySelector('.toggle[data-switch="' + p.sw + '"]');
+        if (el) setToggle(el, on);
+        applyModuleSwitch(p.key, on);
+    });
+    // 页内非模块开关
+    [['choiceText', false], ['idle', true], ['gameQuick', true], ['idleGaze', true]].forEach(([k, d]) => {
+        const el = document.querySelector('.toggle[data-switch="' + k + '"]');
+        if (el) setToggle(el, settings[k] != null ? !!settings[k] : d);
+    });
+}
+function loadBackend() {
+    // 直播/弹幕/参考音频
+    fetch('/ai/config').then(r => r.json()).then(d => {
+        if (d.code !== 1 || !d.data) return;
+        aiCfg = d.data;
+        if (aiCfg.room_id) document.getElementById('roomId').value = aiCfg.room_id;
+        if (aiCfg.netease_uid) document.getElementById('neteaseUid').value = aiCfg.netease_uid;
+        const lm = document.querySelector('.toggle[data-switch="liveMode"]');
+        if (lm) { setToggle(lm, !!aiCfg.live_mode); applyModuleSwitch('live', !!aiCfg.live_mode); }
+        const dm = document.querySelector('.toggle[data-switch="danmaku"]');
+        if (dm) setToggle(dm, aiCfg.danmaku_enabled == null ? true : !!aiCfg.danmaku_enabled);
+        const ref = document.getElementById('referWav');
+        if (ref) ref.textContent = aiCfg.refer_wav || '（未配置参考音频，点右侧按钮打开目录）';
+        const cur = document.getElementById('curModel');
+        if (cur) cur.textContent = (aiCfg.gpt_model_path || '?').split(/[\\/]/).pop() + ' + ' + (aiCfg.sovits_model_path || '?').split(/[\\/]/).pop();
+    }).catch(() => {});
+    // 麻将状态
+    mjStatus();
+    // 语音模型列表
+    loadTtsModels();
+    loadTtsVariants();
+    loadReferAudios(false);   // 参考音频下拉框（目录取 refer_wav 的父目录）
+    loadTtsCacheInfo();       // 语音缓存占用
+    // AI 设定页（模型配置 / 桌宠信息 / 提示词）
+    loadAiSettings();
+    // 联网查询页（博查 API Key / 条数 / 试搜）
+    loadWebSearchFields();
+    // Live2D 模型列表 + 表情
+    loadModels();
+    loadExprMap();
+    // 指令库
+    loadCmdLib();
+}
+function mjStatus() {
+    fetch('/ai/mahjong/status').then(r => r.json()).then(d => {
+        const on = d.code === 1 && d.data && d.data.enabled;
+        const el = document.getElementById('mjStatus');
+        if (el) el.textContent = on ? '插件已启用' : '插件已关闭';
+        const t = document.querySelector('.toggle[data-switch="mahjongEnabled"]');
+        if (t) { setToggle(t, !!on); applyModuleSwitch('mahjong', !!on); writeSettings({ mahjongEnabled: on ? 1 : 0 }); }
+    }).catch(() => {});
+}
+
+// ================= TTS =================
+function loadTtsModels() {
+    if (!aiCfg) {   // 配置还没到 → 自己拉一次再渲染（避免下拉框没有选中当前模型）
+        fetch('/ai/config').then(r => r.json()).then(d => {
+            if (d.code === 1 && d.data) { aiCfg = d.data; loadTtsModels(); }
+        }).catch(() => {});
+        return;
+    }
+    fetch('/ai/models').then(r => r.json()).then(d => {
+        if (d.code !== 1 || !d.data) return;
+        const g = document.getElementById('gptModel'), s = document.getElementById('sovitsModel');
+        const curG = (aiCfg && aiCfg.gpt_model_path) || '';
+        const curS = (aiCfg && aiCfg.sovits_model_path) || '';
+        g.innerHTML = (d.data.gpt || []).map(m =>
+            '<option value="' + m.path + '"' + (curG && m.path === curG ? ' selected' : '') + '>' + m.name + '</option>').join('') || '<option value="">（未找到 .ckpt 模型）</option>';
+        s.innerHTML = (d.data.sovits || []).map(m =>
+            '<option value="' + m.path + '"' + (curS && m.path === curS ? ' selected' : '') + '>' + m.name + '</option>').join('') || '<option value="">（未找到 .pth 模型）</option>';
+    }).catch(() => toast('语音模型列表读取失败', true));
+}
+/** 空闲随机视线：实时通知已打开的桌面版窗口（同源 opener 时生效） */
+function notifyIdleGaze(on) {
+    try {
+        const w = window.opener;
+        if (w && typeof w.setIdleGaze === 'function') { w.setIdleGaze(on); return; }
+    } catch (e) {}
+    toast('已保存空闲视线设置，刷新桌面版生效');
+}
+
+// ================= 语音缓存：查看占用 / 清空 =================
+function loadTtsCacheInfo() {
+    const el = document.getElementById('ttsCacheInfo');
+    if (!el) return;
+    fetch('/ai/tts/cache').then(r => r.json()).then(d => {
+        const m = (d && d.data) || {};
+        el.textContent = '当前缓存 ' + (m.count || 0) + ' 条 / ' + (m.mb || 0) + ' MB（缓存键含「参考音频+模型+语速+变体」，换音色会自动重新合成）';
+    }).catch(() => { el.textContent = '缓存信息读取失败（后端没启动？）'; });
+}
+function clearTtsCache() {
+    if (!confirm('清空语音缓存？下次试听/说话会全部重新合成（首次会慢一点）')) return;
+    fetch('/ai/tts/cache/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(r => r.json()).then(d => {
+            const m = (d && d.data) || {};
+            toast(m.message || '已清空语音缓存');
+            loadTtsCacheInfo();
+        }).catch(() => toast('清空失败（后端没启动？）', true));
+}
+// ================= 参考音频：下拉选择 / 参考文本 / 试听 =================
+let referAudioEl = null;      // 试听用 <audio>
+
+/** 读参考音频目录清单；loud=true 时把结果/错误弹 toast（手动刷新时用） */
+function loadReferAudios(loud) {
+    const sel = document.getElementById('referSel');
+    if (!sel) return;
+    if (loud) sel.innerHTML = '<option>读取中…</option>';
+    fetch('/ai/dev/refer-audios').then(r => r.json()).then(d => {
+        const info = (d && d.data) || {};
+        const items = info.items || [];
+        const cur = info.current || '';
+        const curName = cur ? cur.replace(/^.*[\\/]/, '') : '';
+        const lab = document.getElementById('referWav');
+        if (lab) lab.textContent = cur ? cur : (info.message || '（未配置参考音频，点右侧按钮打开目录）');
+        const rt = document.getElementById('referText');
+        if (rt && info.promptText != null && rt.value.trim() === '') rt.value = info.promptText;
+        if (!items.length) {
+            sel.innerHTML = '<option value="">' + (info.message || '（该目录里没有 wav/mp3）') + '</option>';
+            if (loud) toast(info.message || '目录里没有音频文件', true);
+            return;
+        }
+        sel.innerHTML = items.map(it => '<option value="' + encodeURIComponent(it.name) + '"'
+            + (it.name === curName ? ' selected' : '') + '>' + it.name
+            + '（' + it.sizeKB + 'KB' + (it.promptText ? ' · 有参考文本' : '') + '）</option>').join('');
+        if (loud) toast('参考音频列表已刷新（' + items.length + ' 个）');
+    }).catch(() => { if (loud) toast('参考音频列表读取失败（后端没启动？）', true); });
+}
+
+/** 下拉选择 / 手动应用：把选中的 wav 写进 ai_config.refer_wav（并按需带出参考文本） */
+function saveReferAudio(fromSelect) {
+    const sel = document.getElementById('referSel');
+    const name = sel && sel.value ? decodeURIComponent(sel.value) : '';
+    if (!name) { toast('请先在下拉框里选一个参考音频', true); return; }
+    const withText = true;   // 有同名 .lab/.txt 就顺带更新参考文本
+    fetch('/ai/dev/refer-audio/select', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, withText: withText })
+    }).then(r => r.json()).then(d => {
+        if (d.code !== 1 || !d.data || !d.data.ok) { toast((d.data && d.data.message) || d.message || '切换失败', true); return; }
+        const info = d.data;
+        // 同步本地缓存的 ai_config，避免下次整份回写时又把它改回去
+        if (aiCfg) { aiCfg.refer_wav = info.refer_wav; if (info.prompt_text != null) aiCfg.prompt_text = info.prompt_text; }
+        const lab = document.getElementById('referWav');
+        if (lab) lab.textContent = info.refer_wav || '';
+        const rt = document.getElementById('referText');
+        if (rt && info.prompt_text != null) rt.value = info.prompt_text;
+        // 没找到同名 .lab/.txt（后端已清空文本）→ 高亮并聚焦，提醒老师填这段音频的内容
+        if (rt && !info.labFound) {
+            rt.classList.add('err');
+            rt.focus();
+            setTimeout(() => rt.classList.remove('err'), 2500);
+        }
+        toast(info.message || '已切换参考音频', !info.labFound);
+        loadReferAudios(false);
+    }).catch(e => toast('切换失败：' + (e.message || '网络错误'), true));
+}
+
+/** 试听当前下拉框选中的参考音频（走后端流式接口，本地文件也能播） */
+function auditionRefer() {
+    const sel = document.getElementById('referSel');
+    const name = sel && sel.value ? decodeURIComponent(sel.value) : '';
+    if (!name) { toast('请先选一个参考音频', true); return; }
+    try {
+        if (referAudioEl) { referAudioEl.pause(); referAudioEl = null; }
+        referAudioEl = new Audio('/ai/dev/refer-audio/audio?name=' + encodeURIComponent(name));
+        referAudioEl.play().then(() => toast('试听中：' + name)).catch(e => toast('播放失败：' + (e.message || e), true));
+    } catch (e) { toast('试听失败：' + e.message, true); }
+}
+
+/** 参考文本单独保存（文本框里手改过的内容写回 ai_config.prompt_text） */
+function saveReferText() {
+    const rt = document.getElementById('referText');
+    if (!rt) return;
+    pushConfig({ prompt_text: rt.value.trim() });
+}
+
+// ===== AI 设定页（原管理页「桌宠基础设置」搬移过来：模型配置 / 桌宠信息 / AI 提示词）=====
+function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); }
+
+function loadAiSettings() {
+    loadAiConfigFields();
+    loadAiPetInfo();
+    // 提示词：默认载入版本号最大的那一版
+    fetch('/ai/prompt').then(r => r.json()).then(d => {
+        const list = d.data || [];
+        const maxVer = list.reduce((m, p) => Math.max(m, p.version || 1), 1);
+        const el = document.getElementById('cfgPromptVersion');
+        if (el) el.value = maxVer;
+        loadPromptVersion();
+    }).catch(() => {});
+}
+
+function loadAiConfigFields() {
+    const fill = (c) => {
+        setVal('cfgApiKey', c.api_key);
+        setVal('cfgApiUrl', c.api_url);
+        setVal('cfgModel', c.model);
+        setVal('cfgMaxTokens', c.max_tokens != null ? c.max_tokens : 2048);
+        setVal('cfgTemperature', c.temperature != null ? c.temperature : 0.9);
+        setVal('cfgTtsUrl', c.tts_url);
+        setVal('cfgReferWav', c.refer_wav);
+        setVal('cfgPromptText', c.prompt_text);
+        setVal('cfgTtsSpeed', c.tts_speed != null ? c.tts_speed : 1);
+        setVal('cfgSampleSteps', c.sample_steps != null ? c.sample_steps : 32);
+        setVal('cfgBiliCookie', c.bili_cookie);
+    };
+    if (aiCfg) { fill(aiCfg); return; }
+    fetch('/ai/config').then(r => r.json()).then(d => { if (d.code === 1 && d.data) { aiCfg = d.data; fill(aiCfg); } })
+        .catch(() => toast('配置读取失败（后端没启动？）', true));
+}
+
+/** 只提交本页字段：先合并进已缓存的 ai_config 再整份回写，避免清掉直播/弹幕等其它字段 */
+function saveAiConfig() {
+    const patch = {
+        api_key: document.getElementById('cfgApiKey').value.trim(),
+        api_url: document.getElementById('cfgApiUrl').value.trim(),
+        model: document.getElementById('cfgModel').value.trim(),
+        max_tokens: parseInt(document.getElementById('cfgMaxTokens').value) || 2048,
+        temperature: parseFloat(document.getElementById('cfgTemperature').value) || 0.9,
+        tts_url: document.getElementById('cfgTtsUrl').value.trim(),
+        refer_wav: document.getElementById('cfgReferWav').value.trim(),
+        prompt_text: document.getElementById('cfgPromptText').value.trim(),
+        tts_speed: parseFloat(document.getElementById('cfgTtsSpeed').value) || 1,
+        sample_steps: parseInt(document.getElementById('cfgSampleSteps').value) || 32
+    };
+    if (!patch.api_key) { toast('API Key 不能为空', true); return; }
+    if (!patch.api_url) { toast('API 地址不能为空', true); return; }
+    pushConfig(patch);
+}
+
+function loadAiPetInfo() {
+    fetch('/basicinfo?id=1').then(r => r.json()).then(d => {
+        const info = d.data;
+        if (info) { setVal('cfgPetName', info['姓名']); setVal('cfgPetRole', info['身份']); }
+    }).catch(() => {});
+    fetch('/basicinfo?id=2').then(r => r.json()).then(d => {
+        const info = d.data;
+        if (info) { setVal('cfgUserName', info['姓名']); setVal('cfgUserRole', info['身份']); }
+    }).catch(() => {});
+}
+
+function saveAiPetInfo() {
+    const petName = document.getElementById('cfgPetName').value.trim();
+    const petRole = document.getElementById('cfgPetRole').value.trim();
+    const userName = document.getElementById('cfgUserName').value.trim();
+    const userRole = document.getElementById('cfgUserRole').value.trim();
+    if (!petName) { toast('AI 姓名不能为空', true); return; }
+    if (!petRole) { toast('AI 身份不能为空', true); return; }
+    if (!userName) { toast('用户姓名不能为空', true); return; }
+    if (!userRole) { toast('用户身份不能为空', true); return; }
+    Promise.all([
+        fetch('/basicinfo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 1, '姓名': petName, '身份': petRole }) }),
+        fetch('/basicinfo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 2, '姓名': userName, '身份': userRole }) })
+    ]).then(() => { toast('桌宠/用户信息已保存'); loadAiPetInfo(); })
+      .catch(() => toast('保存失败（后端没启动？）', true));
+}
+
+function loadPromptVersion() {
+    const ver = parseInt(document.getElementById('cfgPromptVersion').value) || 1;
+    fetch('/ai/prompt/version/' + ver).then(r => r.json()).then(d => {
+        const list = d.data || [];
+        let sys = '', fn = '';
+        list.forEach(p => {
+            if (p.prompt_type === 'system') sys = p.content || '';
+            if (p.prompt_type === 'function') fn = p.content || '';
+        });
+        setVal('cfgPromptSystem', sys);
+        setVal('cfgPromptFunction', fn);
+        const hint = document.getElementById('cfgPromptHint');
+        if (hint) hint.textContent = list.length
+            ? '版本 ' + ver + '：' + list.map(p => p.prompt_type + ' ' + (p.content || '').length + ' 字').join(' / ')
+            : '版本 ' + ver + ' 暂无内容，填写后点「提交」即创建该版本';
+    }).catch(() => toast('提示词读取失败', true));
+}
+
+function saveAiPrompt() {
+    const ver = parseInt(document.getElementById('cfgPromptVersion').value) || 1;
+    const sys = document.getElementById('cfgPromptSystem').value;
+    const fn = document.getElementById('cfgPromptFunction').value;
+    const jobs = [];
+    if (sys.trim()) jobs.push(fetch('/ai/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_type: 'system', content: sys, version: ver }) }));
+    if (fn.trim()) jobs.push(fetch('/ai/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_type: 'function', content: fn, version: ver }) }));
+    if (!jobs.length) { toast('两个提示词都是空的，没有可提交的内容', true); return; }
+    Promise.all(jobs).then(() => { toast('提示词已提交（版本 ' + ver + '）'); loadPromptVersion(); })
+        .catch(() => toast('提交失败', true));
+}
+
+function saveBiliCookie() {
+    const v = document.getElementById('cfgBiliCookie').value.trim();
+    pushConfig({ bili_cookie: v });
+}
+
+// ===== 联网查询页（博查 Bocha）=====
+function loadWebSearchFields() {
+    const fill = (c) => {
+        setVal('cfgWebSearchKey', c.web_search_api_key);
+        setVal('cfgWebSearchCount', c.web_search_count != null ? c.web_search_count : 5);
+        const t = document.querySelector('.toggle[data-switch="webSearchEnabled"]');
+        const on = c.web_search_enabled === 1;
+        if (t) setToggle(t, on);
+        applyModuleSwitch('websearch', on);
+    };
+    if (aiCfg) { fill(aiCfg); checkWebSearch(); return; }
+    fetch('/ai/config').then(r => r.json()).then(d => { if (d.code === 1 && d.data) { aiCfg = d.data; fill(aiCfg); checkWebSearch(); } })
+        .catch(() => toast('配置读取失败（后端没启动？）', true));
+}
+function saveWebSearchCfg() {
+    const patch = {
+        web_search_api_key: document.getElementById('cfgWebSearchKey').value.trim(),
+        web_search_count: parseInt(document.getElementById('cfgWebSearchCount').value) || 5
+    };
+    pushConfig(patch);
+    setTimeout(checkWebSearch, 500);
+}
+function checkWebSearch() {
+    fetch('/ai/web-search/status').then(r => r.json()).then(d => {
+        const s = d.data || {};
+        const el = document.getElementById('wsStatus');
+        if (el) el.textContent = (s.enabled ? '模块已开启' : '模块已关闭')
+            + ' · ' + (s.hasKey ? '已配置 API Key' : '未配置 API Key')
+            + ' · 每轮注入 ' + (s.count != null ? s.count : 5) + ' 条'
+            + (s.usable ? ' → 🔍 按钮可用' : ' → 🔍 按钮不可用');
+    }).catch(() => { const el = document.getElementById('wsStatus'); if (el) el.textContent = '状态读取失败（后端没启动？）'; });
+}
+function testWebSearch() {
+    const q = document.getElementById('wsTestQuery').value.trim();
+    const out = document.getElementById('wsTestOut');
+    if (!q) { toast('先填一条要搜的内容', true); return; }
+    if (out) out.textContent = '检索中…';
+    fetch('/ai/web-search/test?q=' + encodeURIComponent(q)).then(r => r.json()).then(d => {
+        const s = d.data || {};
+        if (!s.ok) {
+            if (out) out.textContent = '失败：' + (s.error || d.message || '未知错误') + '\n\n原始响应：\n' + (s.raw || '（空）');
+            toast('检索失败：' + (s.error || ''), true);
+            return;
+        }
+        const lines = (s.items || []).map((it, i) =>
+            (i + 1) + '. 《' + it.title + '》\n   ' + (it.snippet || '').substring(0, 160) +
+            '\n   来源：' + (it.site || '-') + (it.date ? ' · ' + it.date : '') + '\n   ' + it.url);
+        if (out) out.textContent = '成功，共 ' + (s.items || []).length + ' 条：\n\n' + lines.join('\n\n');
+        toast('检索成功，共 ' + (s.items || []).length + ' 条');
+    }).catch(e => { if (out) out.textContent = '请求异常：' + e; toast('请求异常', true); });
+}
+
+/** 语音合成变体下拉（句首语气词被拉长音/吞字时用来切换对策） */function loadTtsVariants() {
+    fetch('/ai/tts/variants').then(r => r.json()).then(d => {
+        if (d.code !== 1 || !d.data) return;
+        const sel = document.getElementById('ttsVariantSel');
+        if (!sel) return;
+        const cur = parseInt(readSettings().ttsVariant) || 0;
+        sel.innerHTML = '<option value="0">跟随后端默认（' + d.data.defaultVariant + '）</option>' +
+            (d.data.list || []).map(v => '<option value="' + v.variant + '"' + (v.variant === cur ? ' selected' : '') + '>' + v.name + '</option>').join('');
+        sel.onchange = () => {
+            writeSettings({ ttsVariant: parseInt(sel.value) || 0 });
+            toast('合成变体已保存，刷新桌面版生效');
+        };
+    }).catch(() => {});
+}
+
+function switchTtsModel() {
+    const g = document.getElementById('gptModel').value;
+    const s = document.getElementById('sovitsModel').value;
+    if (!g || !s) { toast('请先选择 GPT 与 SoVITS 模型', true); return; }
+    toast('正在切换语音模型…');
+    fetch('/ai/switch-model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gpt_model_path: g, sovits_model_path: s }) })
+        .then(r => r.json()).then(d => {
+            if (d.code === 1) { toast('语音模型切换成功'); if (aiCfg) { aiCfg.gpt_model_path = g; aiCfg.sovits_model_path = s; } }
+            else toast(d.message || '切换失败', true);
+        }).catch(e => toast('切换异常: ' + e, true));
+}
+function testTts() {
+    const text = document.getElementById('ttsTestText').value.trim() || '老师，听得清楚吗～';
+    const v = parseInt(readSettings().ttsVariant) || 0;
+    toast('正在合成试听…');
+    fetch('/ai/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, variant: String(v) }) })
+        .then(r => r.json()).then(d => {
+            if (d.code === 1 && d.data) {
+                const audio = new Audio('data:audio/wav;base64,' + d.data);
+                audio.play();
+                toast('试听中…');
+            } else {
+                toast('试听失败：' + (d.message || '未知错误') + '（TTS 服务可能未启动）', true);
+            }
+        }).catch(e => toast('试听异常: ' + e, true));
+}
+function openFolder(type) {
+    // 基础设置窗口是 screen-saver 级置顶，会把随后弹出的资源管理器盖住 → 先让出置顶，
+    // 点回本窗口时 JS 侧会自动恢复（见 main.js 的 settings-yield-top）
+    try { if (window.electronAPI && window.electronAPI.yieldTopForOtherWindow) window.electronAPI.yieldTopForOtherWindow(); } catch (e) {}
+    fetch('/ai/dev/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: type }) })
+        .then(r => r.json()).then(d => toast(d.code === 1 ? d.message : (d.message || '打开失败'), d.code !== 1))
+        .catch(e => toast('打开失败: ' + e, true));
+}
+
+// ================= Live2D 模型 / 表情映射 =================
+function loadModels() {
+    fetch('/ai/dev/live2d/models').then(r => r.json()).then(d => {
+        const sel = document.getElementById('l2dModel');
+        if (d.code !== 1) { toast('模型读取失败', true); return; }
+        const list = d.data || [];
+        const cur = readSettings().live2dModel || '阿洛娜4_backup2025_0815_2142_backup2025_1017_2227.model3.json';
+        sel.innerHTML = list.map(m => '<option value="' + m.file + '"' + (m.file === cur ? ' selected' : '') + '>' +
+            m.file.replace('.model3.json', '') + (m.file === cur ? '（当前使用）' : '') + '</option>').join('')
+            || '<option value="">（未找到模型）</option>';
+        sel.onchange = () => {
+            writeSettings({ live2dModel: sel.value });
+            toast('模型已选择，刷新桌面版后生效');
+        };
+    }).catch(() => toast('模型读取失败（后端未启动？）', true));
+}
+function loadExprMap() {
+    fetch('/ai/dev/live2d/expressions').then(r => r.json()).then(d => {
+        if (d.code === 1) {
+            document.getElementById('exprFiles').innerHTML = (d.data || []).map(n => '<option value="' + n + '">').join('');
+        }
+    }).catch(() => {});
+    fetch('/ai/dev/live2d/expression-map').then(r => r.json()).then(d => {
+        if (d.code !== 1) return;
+        exprMap = d.data || [];
+        renderExprMap();
+    }).catch(() => {
+        document.getElementById('exprBody').innerHTML = '<tr><td colspan="4" class="empty">读取失败（后端未启动？）</td></tr>';
+    });
+}
+function renderExprMap() {
+    const body = document.getElementById('exprBody');
+    if (!exprMap.length) { body.innerHTML = '<tr><td colspan="4" class="empty">暂无映射</td></tr>'; return; }
+    body.innerHTML = exprMap.map(r =>
+        '<tr data-id="' + r.id + '">' +
+        '<td class="cid">' + r.id + '</td>' +
+        '<td><input type="text" class="ex-img" list="exprFiles" value="' + esc(r.image_name) + '"></td>' +
+        '<td><input type="text" class="ex-files" list="exprFiles" value="' + esc(r.expression_files) + '"></td>' +
+        '<td><button class="btn mini primary" onclick="saveExpr(' + r.id + ')">保存</button> ' +
+        '<button class="btn mini danger" onclick="delExpr(' + r.id + ')">删除</button></td></tr>').join('');
+}
+function esc(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function addExprRow() {
+    exprMap.push({ id: null, image_name: '', expression_files: '' });
+    renderExprMap();
+    const rows = document.querySelectorAll('#exprBody tr');
+    const last = rows[rows.length - 1];
+    if (last) last.querySelector('.ex-img').focus();
+}
+function rowOf(id) {
+    const tr = document.querySelector('#exprBody tr[data-id="' + id + '"]');
+    if (!tr) return null;
+    return { tr: tr, image_name: tr.querySelector('.ex-img').value.trim(), expression_files: tr.querySelector('.ex-files').value.trim() };
+}
+function saveExpr(id) {
+    let rowData;
+    if (id === null || id === undefined) {
+        const rows = document.querySelectorAll('#exprBody tr');
+        const tr = rows[rows.length - 1];
+        rowData = { tr: tr, image_name: tr.querySelector('.ex-img').value.trim(), expression_files: tr.querySelector('.ex-files').value.trim() };
+    } else {
+        rowData = rowOf(id);
+    }
+    if (!rowData) return;
+    const { tr, image_name, expression_files } = rowData;
+    tr.classList.remove('bad');
+    if (!image_name || !expression_files) { tr.classList.add('bad'); toast('图片名与表情文件都不能为空', true); return; }
+    const isNew = !id;
+    const url = '/ai/dev/live2d/expression-map';
+    const opt = {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isNew ? { image_name, expression_files } : { id: id, image_name, expression_files })
+    };
+    fetch(url, opt).then(r => r.json()).then(d => {
+        if (d.code === 1) {
+            toast('已保存：' + image_name + ' → ' + expression_files);
+            loadExprMap();
+        } else {
+            tr.classList.add('bad');
+            toast(d.message || '保存失败（图片名重复？）', true);
+        }
+    }).catch(e => { tr.classList.add('bad'); toast('保存异常: ' + e, true); });
+}
+function delExpr(id) {
+    if (!confirm('确认删除这条表情映射？')) return;
+    fetch('/ai/dev/live2d/expression-map/' + id, { method: 'DELETE' }).then(r => r.json()).then(d => {
+        toast(d.code === 1 ? '已删除' : (d.message || '删除失败'), d.code !== 1);
+        loadExprMap();
+    }).catch(e => toast('删除异常: ' + e, true));
+}
+
+// ================= 指令库 =================
+const MODULE_NAME = { base: '基础外观', tts: '语音 TTS', live2d: 'Live2D', live: '直播',
+    mahjong: '雀魂麻将', game: '网络天才', music: '网易云听歌', vision: '桌面视觉' };
+
+function loadCmdLib() {
+    fetch('/ai/dev/command-lib').then(r => r.json()).then(d => {
+        if (d.code !== 1) return;
+        cmdLib = d.data || [];
+        renderAllCmdBlocks();
+    }).catch(() => {
+        document.querySelectorAll('.cmd-block').forEach(el =>
+            el.innerHTML = '<div class="empty">指令库读取失败（后端未启动？）</div>');
+    });
+}
+function renderAllCmdBlocks() {
+    document.querySelectorAll('.cmd-block').forEach(el => renderCmdBlock(el, el.dataset.cmdModule));
+}
+function renderCmdBlock(block, module) {
+    const rows = cmdLib.filter(c => c.module === module);
+    const head = '<div class="cmd-head"><div class="t">📜 本模块指令 <span class="hint">' +
+        MODULE_NAME[module] + ' · 左侧「主指令」为代码内置触发词（不可改），右侧为别名（用 | 分隔，可增删）；新增功能需在后端补充代码后才会出现</span></div></div>';
+    if (!rows.length) {
+        block.innerHTML = head + '<div class="empty">该模块暂无指令记录</div>';
+        return;
+    }
+    block.innerHTML = head +
+        '<table class="tbl"><thead><tr><th class="cid">ID</th><th style="width:22%">主指令</th><th>别名（| 分隔）</th><th>功能</th><th style="width:110px"></th></tr></thead><tbody>' +
+        rows.map(r => {
+            const parts = splitCmd(r.command);
+            const anchor = parts[0] || '';
+            const alias = parts.slice(1).join(' | ');
+            return '<tr data-id="' + r.id + '" data-anchor="' + esc(anchor) + '" data-module="' + module + '">' +
+                '<td class="cid">' + r.id + '</td>' +
+                '<td><span class="chip">' + esc(anchor) + '</span></td>' +
+                '<td><input type="text" class="cm-alias" value="' + esc(alias) + '" placeholder="多个别名用 | 分隔"></td>' +
+                '<td><input type="text" class="cm-feature" value="' + esc(r.feature) + '"></td>' +
+                '<td><button class="btn mini primary" onclick="saveCmd(' + r.id + ')">保存</button> ' +
+                '<button class="btn mini danger" onclick="delCmd(' + r.id + ')">删除</button></td></tr>';
+        }).join('') + '</tbody></table>';
+}
+function splitCmd(raw) {
+    return String(raw || '').split(/[|｜]/).map(s => s.trim()).filter(Boolean);
+}
+function cmdRowOf(id) {
+    const tr = document.querySelector('tr[data-id="' + id + '"][data-module]');
+    if (!tr) return null;
+    return { tr: tr, anchor: tr.dataset.anchor, module: tr.dataset.module,
+        alias: tr.querySelector('.cm-alias').value.trim(), feature: tr.querySelector('.cm-feature').value.trim() };
+}
+function saveCmd(id) {
+    const r = cmdRowOf(id);
+    if (!r) return;
+    r.tr.classList.remove('bad');
+    const command = [r.anchor].concat(splitCmd(r.alias)).join('|');
+    fetch('/ai/dev/command-lib', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, module: r.module, command: command, feature: r.feature, enabled: 1 }) })
+        .then(res => res.json()).then(d => {
+            if (d.code === 1) { toast('指令已保存，刷新桌面版生效'); loadCmdLib(); }
+            else { r.tr.classList.add('bad'); toast(d.message || '保存失败（指令重复？）', true); }
+        }).catch(e => { r.tr.classList.add('bad'); toast('保存异常: ' + e, true); });
+}
+function delCmd(id) {
+    if (!confirm('确认删除这条指令？删除后该触发词将失效')) return;
+    fetch('/ai/dev/command-lib/' + id, { method: 'DELETE' }).then(r => r.json()).then(d => {
+        toast(d.code === 1 ? '已删除' : (d.message || '删除失败'), d.code !== 1);
+        loadCmdLib();
+    }).catch(e => toast('删除异常: ' + e, true));
+}
+// 说明：不提供「新增指令」入口 —— 新增功能必须先在后端/桌面版补代码，
+// 设置页只负责编辑「已有功能」的触发词（别名）与功能说明。
+
+// ================= 重置 =================
+function resetAll() {
+    if (!confirm('恢复默认设置？（指令库与表情映射表不受影响）')) return;
+    localStorage.removeItem(LS_KEY);
+    toast('已恢复默认，正在重新加载…');
+    setTimeout(() => location.reload(), 700);
+}
+
+
+// ===== 陪玩点评页（🎬）=====
+let cmConfig = null;
+function cmSet(id, v) { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); }
+function cmGet(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+function cmNum(id, dft) { const v = parseInt(cmGet(id)); return isNaN(v) ? dft : v; }
+
+function loadCommentary() {
+    fetch('/ai/commentary/config').then(r => r.json()).then(d => {
+        const data = (d && d.data) || {};
+        const c = data.config;
+        if (c) {
+            cmConfig = c;
+            cmSet('cmInterval', c.interval_sec);
+            cmSet('cmMinChange', c.min_change_score);
+            cmSet('cmMaxStreak', c.max_streak);
+            cmSet('cmSilence', c.silence_sec);
+            cmSet('cmAfterTalk', c.after_talk_sec);
+            cmSet('cmSkip', c.skip_percent);
+            cmSet('cmVolume', c.volume_percent);
+            cmSet('cmMaxChars', c.max_chars);
+            cmSet('cmKeepMin', c.keep_minutes);
+            cmSet('cmManualTtl', c.manual_ttl_min);
+            cmSet('cmMaxTokens', c.max_tokens != null ? c.max_tokens : 1200);
+            const t1 = document.querySelector('.toggle[data-switch="commentaryEnabled"]');
+            if (t1) setToggle(t1, c.enabled === 1);
+            const t2 = document.querySelector('.toggle[data-switch="cmVoice"]');
+            if (t2) setToggle(t2, c.voice_on === 1);
+            const t3 = document.querySelector('.toggle[data-switch="cmAutoDetect"]');
+            if (t3) setToggle(t3, c.auto_detect === 1);
+            applyModuleSwitch('commentary', c.enabled === 1);
+        }
+        renderCommentaryContexts(data.contexts || []);
+    }).catch(() => {
+        document.getElementById('cmCtxBody').innerHTML = '<tr><td colspan="4" class="empty">读取失败（后端没启动？）</td></tr>';
+    });
+}
+function cmCfgPayload() {
+    return {
+        id: cmConfig ? cmConfig.id : null,
+        enabled: isOn('commentaryEnabled') ? 1 : 0,
+        interval_sec: cmNum('cmInterval', 12),
+        min_change_score: cmNum('cmMinChange', 3),
+        max_streak: cmNum('cmMaxStreak', 3),
+        silence_sec: cmNum('cmSilence', 45),
+        after_talk_sec: cmNum('cmAfterTalk', 20),
+        skip_percent: cmNum('cmSkip', 35),
+        volume_percent: cmNum('cmVolume', 45),
+        max_chars: cmNum('cmMaxChars', 20),
+        keep_minutes: cmNum('cmKeepMin', 60),
+        manual_ttl_min: cmNum('cmManualTtl', 15),
+        max_tokens: cmNum('cmMaxTokens', 1200),
+        voice_on: isOn('cmVoice') ? 1 : 0,
+        auto_detect: isOn('cmAutoDetect') ? 1 : 0
+    };
+}
+function saveCommentaryCfg() {
+    fetch('/ai/commentary/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cmCfgPayload()) })
+        .then(r => r.json()).then(d => {
+            if (d.code === 1) { toast('陪玩点评参数已保存'); loadCommentary(); }
+            else toast(d.message || '保存失败', true);
+        }).catch(() => toast('保存失败（后端没启动？）', true));
+}
+function saveCommentarySwitch(on) {
+    const body = cmCfgPayload();
+    body.enabled = on ? 1 : 0;
+    fetch('/ai/commentary/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(r => r.json()).then(d => { toast(on ? '陪玩点评模块已开启' : '陪玩点评模块已关闭', d.code !== 1); })
+        .catch(() => toast('开关保存失败', true));
+}
+function renderCommentaryContexts(list) {
+    const body = document.getElementById('cmCtxBody');
+    if (!list.length) { body.innerHTML = '<tr><td colspan="4" class="empty">暂无语境</td></tr>'; return; }
+    body.innerHTML = list.map(c =>
+        '<tr data-id="' + c.id + '">' +
+        '<td class="cid">' + c.id + '</td>' +
+        '<td><b>' + esc(c.code) + '</b><br><span class="hint">' + esc(c.label) + '</span></td>' +
+        '<td><textarea class="ta cm-prompt" style="min-height:74px">' + esc(c.prompt) + '</textarea></td>' +
+        '<td><button class="btn mini primary" onclick="saveCommentaryContext(' + c.id + ')">保存</button></td></tr>').join('');
+}
+function saveCommentaryContext(id) {
+    const tr = document.querySelector('#cmCtxBody tr[data-id="' + id + '"]');
+    if (!tr) return;
+    const prompt = tr.querySelector('.cm-prompt').value;
+    const row = (cmConfig && cmContextsCache) ? cmContextsCache.find(x => x.id === id) : null;
+    fetch('/ai/commentary/context', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, label: row ? row.label : '', prompt: prompt, enabled: row ? row.enabled : 1 }) })
+        .then(r => r.json()).then(d => toast(d.code === 1 ? '语境提示词已保存' : (d.message || '保存失败'), d.code !== 1))
+        .catch(() => toast('保存失败', true));
+}
+let cmContextsCache = [];
+function testCommentary() {
+    const out = document.getElementById('cmTestOut');
+    const ctx = cmGet('cmTestCtx').trim();
+    if (out) out.textContent = '截屏并请求视觉模型…（约 2~5 秒）';
+    fetch('/ai/commentary/once', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: ctx }) })
+        .then(r => r.json()).then(d => {
+            const x = (d && d.data) || {};
+            if (x.text) {
+                if (out) out.textContent = '点评：' + x.text + '\n语境：' + (x.context || '-') + '（' + (x.contextSource || '') + '）'
+                    + '\n画面差异：' + (x.changeScore != null ? x.changeScore : '-') + (x.shot ? '\n截图：desktop_vision_log/' + x.shot : '');
+                toast('成功：' + x.text);
+            } else {
+                if (out) out.textContent = '未生成点评：' + (x.reason || d.message || '未知原因') + (x.raw ? '\n原始返回：' + x.raw : '');
+                toast('未生成点评', true);
+            }
+        }).catch(e => { if (out) out.textContent = '请求异常：' + e; toast('请求异常', true); });
+}
+// ================= 启动 =================
+bindNav_prepare();
+function bindNav_prepare() {
+    document.addEventListener('DOMContentLoaded', () => {
+        buildNav();
+        bindToggles();
+        bindFields();
+        loadLocal();
+        loadBackend();
+    });
+}
+
+// ================= 无边框窗口的自绘标题栏（─ ✕）=================
+// 窗口在 main.js 里是 frame:false + transparent，没有系统标题栏，所以按钮自己画；
+// 在普通浏览器里打开时（没有 electronAPI）就把那组按钮藏起来。
+(function () {
+    var api = window.electronAPI;
+    if (!api) { document.body.classList.add('no-electron'); return; }
+    var min = document.getElementById('btnMin');
+    var cls = document.getElementById('btnClose');
+    if (min) min.onclick = function () { if (api.minimize) api.minimize(); };
+    if (cls) cls.onclick = function () { if (api.close) api.close(); };
+    // 无边框窗口给个键盘出口：Esc 关闭（在输入框里按 Esc 不关）
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        if (api.close) api.close();
+    });
+})();
+
+// ================= 基础设置窗口大小滑动条（走主进程，实时缩放窗口）=================
+// 这个值不属于桌宠设置（pet_settings），而是 Electron 窗口自己的尺寸，
+// 所以存主进程的 userData/settings-window.json，不走 ai_config / localStorage。
+(function () {
+    var rng = document.getElementById('winScale');
+    var val = document.getElementById('winScaleVal');
+    if (!rng) return;
+    var api = window.electronAPI;
+    function show(v) { if (val) val.textContent = Number(v).toFixed(2) + '×'; }
+    if (api && api.getSettingsScale) {
+        api.getSettingsScale().then(function (s) {
+            if (typeof s === 'number' && isFinite(s)) { rng.value = s; show(s); }
+        }).catch(function () { });
+    } else {
+        rng.disabled = true;
+        if (val) val.textContent = '需在桌宠窗口里打开';
+    }
+    rng.addEventListener('input', function () {
+        // 拖动过程中只更新数字，**不缩放窗口**：
+        // 窗口一变会带着整页（包括这个滑块）一起动，拖起来会追不到滑块。
+        show(parseFloat(rng.value));
+        if (val) val.title = '松手后生效';
+    });
+    rng.addEventListener('change', function () {
+        // 松手（或键盘调整结束）才真正缩放
+        var v = parseFloat(rng.value);
+        show(v);
+        if (api && api.setSettingsScale) api.setSettingsScale(v);
+    });
+})();
+</script>
+</body>
+</html>

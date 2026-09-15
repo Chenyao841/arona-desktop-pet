@@ -1,0 +1,12 @@
+{
+  "name": "zhuochong-pet",
+  "version": "1.0.0",
+  "description": "桌宠桌面版",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
