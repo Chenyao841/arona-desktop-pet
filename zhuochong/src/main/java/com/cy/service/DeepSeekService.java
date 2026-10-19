@@ -146,7 +146,16 @@ public class DeepSeekService {
         if (configs.isEmpty()) return null;
 
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        // ★ 空 Key 优雅降级：分发给别人后第一次运行常常还没填 Key，
+        //   这时不要返回 null（上层会当成失败、页面可能什么都不显示），
+        //   而是直接让阿罗娜说一句"去填 Key"，页面的 TTS/表情链路照常工作。
+        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) {
+            AiResult noKey = new AiResult();
+            noKey.boat_text = "尚未设置API Key，请前往ai模型网站获取并在基础设置中填写。";
+            noKey.motion = "aluona_kunhuo.png";
+            System.out.println("[AI] api_key 为空 → 走「未设置 Key」友好提示，不调用模型");
+            return noKey;
+        }
 
         // reserve history record id (will save after AI response)
         // storeMessage 非空时用它入库（游戏场景只存当前短内容，而非完整 prompt）

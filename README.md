@@ -75,3 +75,16 @@ zhuochong-electron/        Electron 壳（main.js / preload.js / 启动脚本）
 游戏截图等**不属于本项目授权范围**，版权归各自权利方，请勿商用或再分发。
 
 联系方式：**（体验/合作请通过仓库 Issue 或作者留下的联系方式沟通）**
+## 下载体验版
+
+体验包（含 Live2D 模型、立绘、背景等第三方素材，约 700 MB）**不放进仓库文件**，改由 Releases 分发：
+
+- 最新版：`https://github.com/Chenyao841/arona-desktop-pet/releases/latest/download/arona-desktop-pet-xyg.zip`
+- 历史版本：仓库页右侧 **Releases**
+
+首次运行需要 **JDK 17+** 与 **MySQL 8**（脚本会自动体检/引导安装），API Key 需自备；
+装好后双击包内「一键安装.bat」，其余在「基础设置」窗口里填。
+
+## 截图 / 演示
+
+> 待补充：欢迎把主界面、你画我猜画板、音乐操控器、设置页各放一张图/GIF 在这里。

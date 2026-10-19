@@ -1,4 +1,4 @@
-﻿
+
 /*!50503 SET NAMES utf8mb4 */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `adminlist` (

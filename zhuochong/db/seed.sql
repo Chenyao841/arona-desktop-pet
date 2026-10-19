@@ -1,7 +1,6 @@
--- 阿罗娜桌宠 · 内容数据（脱敏）
+﻿-- 阿罗娜桌宠 · 内容数据（脱敏）
 -- 只含应用内容：指令/选项/规则库/词库/场景/人设等；不含聊天记录、记忆、事件簿、战绩
 -- 用法：先导入 schema.sql，再导入本文件
-USE db03;
 
 LOCK TABLES `ai_config` WRITE;
 INSERT INTO `ai_config` (`id`, `api_key`, `api_url`, `tts_url`, `model`, `max_tokens`, `temperature`, `refer_wav`, `prompt_text`, `tts_speed`, `sample_steps`, `gpt_model_path`, `sovits_model_path`, `live_mode`, `bili_cookie`, `room_id`, `danmaku_enabled`, `netease_uid`, `mahjong_enabled`, `web_search_enabled`, `web_search_api_key`, `web_search_count`) VALUES (1,'','https://api.deepseek.com/v1/chat/completions','http://localhost:9880','deepseek-chat',2048,0.80,'','老师可以在这里处理各种工作哦！',1,32,'','',0,'','',0,'',NULL,0,'',5);
