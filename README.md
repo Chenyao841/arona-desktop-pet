@@ -87,4 +87,14 @@ zhuochong-electron/        Electron 壳（main.js / preload.js / 启动脚本）
 
 ## 截图 / 演示
 
-> 待补充：欢迎把主界面、你画我猜画板、音乐操控器、设置页各放一张图/GIF 在这里。
+| 基础设置（蓝白面板 · 位置记忆 · 滑入动画） | 你画我猜（老师画 · 阿罗娜看图猜） |
+|---|---|
+| ![基础设置](docs/screenshots/01-settings.png) | ![你画我猜](docs/screenshots/02-pictionary.png) |
+
+| 基于视觉的雀魂看牌（视觉识别 + 模板比对 + 参考牌面比对） | |
+|---|---|
+| ![雀魂](docs/screenshots/03-mahjong.png) | |
+
+**数据库可视化编辑（管理页 · 录制演示）**
+
+![管理页演示](docs/screenshots/04-admin.gif)
