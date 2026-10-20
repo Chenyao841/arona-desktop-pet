@@ -350,14 +350,16 @@ public class QqEventRouter {
 
         // ===== 走 AI：思考立刻开始，发送交给 QqReplyQueue（固定延迟 + 顺序 + 去抖） =====
         handledCount.incrementAndGet();
-        System.out.println("[QQ] 收到 @" + nickname + "（QQ " + userId + " / 群 " + groupId + "）: " + head(text)
+        final boolean fromAdmin = adminService.isAdmin(userId);
+        System.out.println("[QQ] 收到 @" + nickname + "（QQ " + userId + (fromAdmin ? "，管理员" : "")
+                + " / 群 " + groupId + "）: " + head(text)
                 + (imageUrls.isEmpty() ? "" : "  [含 " + imageUrls.size() + " 张图]")
                 + "（" + tuning.replyDelaySec() + "s 后回复）");
         final String fText = text;
         final List<String> fImages = imageUrls;
         final String fNick = nickname;
         replyQueue.submitGroup(groupId, userId, nickname, messageId,
-                () -> chatService.thinkGroup(groupId, userId, fNick, fText, fImages));
+                () -> chatService.thinkGroup(groupId, userId, fNick, fText, fImages, fromAdmin));
     }
 
     // ===== 小工具 =====

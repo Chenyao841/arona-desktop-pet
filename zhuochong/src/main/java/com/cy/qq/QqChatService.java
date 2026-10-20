@@ -63,15 +63,18 @@ public class QqChatService {
      * 群聊：问模型要一句回复（不发出去）。
      *
      * @param imageUrls 这条消息里的图片（可为空）
+     * @param fromAdmin 发话人是不是管理员（是 → 用 qq_chat_admin，称呼「管理员」）
      */
-    public QqOutcome thinkGroup(long groupId, long userId, String nickname, String text, List<String> imageUrls) {
+    public QqOutcome thinkGroup(long groupId, long userId, String nickname, String text,
+                                List<String> imageUrls, boolean fromAdmin) {
         String speaker = (nickname == null || nickname.trim().isEmpty()) ? ("QQ" + userId) : nickname.trim();
         usage.beginGroup(groupId);
         try {
             String vision = describeImages(imageUrls);
-            String userMessage = buildUserMessage(groupId, userId, speaker, text, vision);
+            String userMessage = buildUserMessage(groupId, userId, speaker, text, vision, imageUrls, fromAdmin);
             DeepSeekService.AiResult r = deepSeekService.chat(
-                    userMessage, text, groupSessionId(groupId), "qq_chat", null, false,
+                    userMessage, text, groupSessionId(groupId),
+                    fromAdmin ? "qq_chat_admin" : "qq_chat", null, false,
                     memoryService.characterFor(groupId, userId));
             String out = (r != null && r.boat_text != null) ? r.boat_text.trim() : "";
             if (out.isEmpty()) out = FALLBACK;
@@ -92,14 +95,19 @@ public class QqChatService {
         usage.beginGroup(-userId);
         try {
             String vision = describeImages(imageUrls);
+            boolean hasImage = imageUrls != null && !imageUrls.isEmpty();
             StringBuilder um = new StringBuilder();
             um.append("[QQ私聊] ").append(nickname).append("（QQ ").append(userId)
-                    .append("，是你的管理员/老师本人）对你说");
-            if (!vision.isEmpty()) um.append("，并发来图片（你看到的内容：").append(vision).append("）");
+                    .append("，是你的管理员，请称呼他「管理员」）对你说");
+            if (!vision.isEmpty()) {
+                um.append("，并发来图片（你看到的内容：").append(vision).append("）");
+            } else if (hasImage) {
+                um.append("，并发来一张图片，但你这次没拿到画面内容（不要凭空描述画面，自然地说一句没看清、让他说说）");
+            }
             if (text != null && !text.trim().isEmpty()) um.append("：").append(text);
             else um.append("（没写字）");
             DeepSeekService.AiResult r = deepSeekService.chat(
-                    um.toString(), text == null ? "" : text, privateSessionId(userId), "qq_chat", null, false,
+                    um.toString(), text == null ? "" : text, privateSessionId(userId), "qq_chat_admin", null, false,
                     "阿罗娜-私聊" + userId);
             String out = (r != null && r.boat_text != null) ? r.boat_text.trim() : "";
             if (out.isEmpty()) out = FALLBACK;
@@ -173,13 +181,20 @@ public class QqChatService {
         return sb.toString();
     }
 
-    private String buildUserMessage(long groupId, long userId, String speaker, String text, String vision) {
+    private String buildUserMessage(long groupId, long userId, String speaker, String text, String vision,
+                                    List<String> imageUrls, boolean fromAdmin) {
         StringBuilder m = new StringBuilder();
         m.append("[QQ群 ").append(groupId).append("] ").append(speaker)
-                .append("（QQ ").append(userId).append("）@你");
+                .append("（QQ ").append(userId).append(fromAdmin ? "，是你的管理员" : "").append("）@你");
         boolean hasText = text != null && !text.trim().isEmpty();
+        boolean hasImage = imageUrls != null && !imageUrls.isEmpty();
         if (!vision.isEmpty()) {
             m.append("，并发来图片（你看到的内容：").append(vision).append("）");
+            if (hasText) m.append("，说：").append(text);
+            else m.append("，没有配文字");
+        } else if (hasImage) {
+            // 有图但没拿到描述：明确告诉模型，别让它以为"什么都没发"
+            m.append("，并发来一张图片，但你这次没拿到画面内容（不要凭空描述画面，自然地说一句没看清、请他再说说）");
             if (hasText) m.append("，说：").append(text);
             else m.append("，没有配文字");
         } else {
