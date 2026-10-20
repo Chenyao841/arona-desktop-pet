@@ -2,3 +2,5 @@
 *.cmd text eol=crlf
 *.sh text eol=lf
 *.bat text eol=crlf
+# env 模板必须 LF：带 CRLF 时 shell source 会把 \r 带进变量值（密码/token 直接失效）
+*.example text eol=lf

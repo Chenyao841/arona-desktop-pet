@@ -122,6 +122,11 @@ head2 "4. 应用"
 if [ -f "$ENV_FILE" ]; then
   perm="$(stat -c '%a' "$ENV_FILE" 2>/dev/null)"
   [ "$perm" = "600" ] && pass "密钥文件存在且权限 600：$ENV_FILE" || warnx "密钥文件权限是 $perm（建议 chmod 600）"
+  if grep -q $'\r' "$ENV_FILE" 2>/dev/null; then
+    warnx "$ENV_FILE 里有 Windows 换行(CRLF) → 变量值会带 \\r，密码/token 会认证失败；执行：sed -i 's/\\r$//' $ENV_FILE"
+  else
+    pass "密钥文件行尾是 LF（不会带 \\r）"
+  fi
   [ -n "${ZC_QQ_WS_TOKEN:-}" ] && pass "ZC_QQ_WS_TOKEN 已配置" || warnx "ZC_QQ_WS_TOKEN 为空（NapCat 配了 token 就会握手失败）"
   [ -n "${ZC_QQ_ADMIN_QQ:-}" ] && pass "ZC_QQ_ADMIN_QQ = $ZC_QQ_ADMIN_QQ" || warnx "ZC_QQ_ADMIN_QQ 为空（管理指令和私聊闲聊都用不了）"
   [ -n "${ZC_DB_PASSWORD:-}" ] && pass "ZC_DB_PASSWORD 已配置" || warnx "ZC_DB_PASSWORD 为空"
