@@ -70,6 +70,15 @@ public class DeepSeekService {
     @org.springframework.beans.factory.annotation.Value("${ai.vision-model:deepseek-v4-flash-vision-exp}")
     private String visionModel;
 
+    /**
+     * 视觉调用的「推理强度」：留空 = 不传该参数（保持服务端默认）。
+     * 推理模型往往把 max_tokens 大量消耗在思考上，导致正式回答为空；
+     * 设为 low 能显著降低思考量，是「图片描述拿不到」最有效的开关。
+     * 取值按服务端支持来：low / medium / high / max（见 /v1/models 的 effort 字段）。
+     */
+    @org.springframework.beans.factory.annotation.Value("${ai.vision-effort:}")
+    private String visionEffort;
+
     private String visionModelName() {
         return esc(visionModel, "deepseek-v4-flash-vision-exp");
     }
@@ -512,13 +521,20 @@ public class DeepSeekService {
         AiConfig cfg = configs.get(0);
         if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
+        String effortParam = "";
+        String effort = visionEffort == null ? "" : visionEffort.trim();
+        if (!effort.isEmpty()) effortParam = ",\"reasoning_effort\":\"" + effort + "\"";
+
         String body = "{\"model\":\"" + visionModelName() + "\"," +
-                "\"max_tokens\":" + maxTokens + "," +
+                "\"max_tokens\":" + maxTokens + effortParam + "," +
                 "\"messages\":[{\"role\":\"user\",\"content\":[" +
                 "{\"type\":\"text\",\"text\":" + toJsonStr(prompt) + "}," +
                 "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64," + imageBase64 + "\"}}" +
                 "]}]}";
         String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
+        System.out.println("[视觉] 模型=" + visionModelName() + "，max_tokens=" + maxTokens
+                + (effort.isEmpty() ? "" : "，reasoning_effort=" + effort)
+                + "，图片 base64 长度=" + (imageBase64 == null ? 0 : imageBase64.length()));
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -529,17 +545,24 @@ public class DeepSeekService {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) response.getBody().get("choices");
                 if (choices != null && !choices.isEmpty()) {
+                    Object finish = choices.get(0).get("finish_reason");
                     @SuppressWarnings("unchecked")
                     Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
                     if (message != null) {
                         String content = (String) message.get("content");
                         if (content != null && !content.trim().isEmpty()) return content;
                         Object reasoning = message.get("reasoning_content");
-                        System.out.println("[视觉] content 为空（" + (reasoning != null ? "思考过程占满 max_tokens=" + maxTokens : "无内容") + "）→ 本次不产出结果");
+                        int reasoningLen = reasoning == null ? 0 : reasoning.toString().length();
+                        System.out.println("[视觉] content 为空（thinking 长度=" + reasoningLen
+                                + " 字符，finish_reason=" + finish + "，max_tokens=" + maxTokens + "）→ 本次不产出结果");
+                        System.out.println("[视觉] 建议：把 ZC_QQ_VISION_MAX_TOKENS 调大（当前 " + maxTokens
+                                + "），或设置 ZC_AI_VISION_EFFORT=low 降低思考量");
                     }
+                } else {
+                    System.out.println("[视觉] 响应 choices 为空: " + response.getBody());
                 }
             } else {
-                System.out.println("[视觉] 非2xx: status=" + response.getStatusCode());
+                System.out.println("[视觉] 非2xx: status=" + response.getStatusCode() + " body=" + response.getBody());
             }
         } catch (Exception e) {
             System.out.println("[视觉] 请求失败: " + e.getMessage());

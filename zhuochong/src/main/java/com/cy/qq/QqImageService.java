@@ -79,8 +79,9 @@ public class QqImageService {
         // 用 chatVisionContentOnly：只认正式回答，不接受 reasoning_content 兜底。
         // 因为现在的视觉模型多是"推理模型"，思考过程会跑到 reasoning_content 里；
         // 把思考过程当图片描述用会得到一堆"我们需要回答这个问题…"的废话。
-        // max_tokens 给足（2000），否则思考先把它吃光、content 变空。
-        String desc = deepSeekService.chatVisionContentOnly(base64, PROMPT, 2000);
+        // max_tokens 默认 4000（可配 ZC_QQ_VISION_MAX_TOKENS）：推理模型会先用掉一部分在思考上，
+        // 给小了 content 就是空的（实测 600 就被吃光）。
+        String desc = deepSeekService.chatVisionContentOnly(base64, PROMPT, config.getVisionMaxTokens());
         if (desc == null || desc.trim().isEmpty()) {
             System.out.println("[QQ] 视觉模型没有返回描述（模型不支持读图 / max_tokens 被思考吃光 / 未配 Key）");
             return null;

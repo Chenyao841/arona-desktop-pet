@@ -67,6 +67,7 @@ qq:
   vision-enabled: ${ZC_QQ_VISION:true}
   vision-max-edge: 800
   vision-max-images: 2
+  vision-max-tokens: ${ZC_QQ_VISION_MAX_TOKENS:4000}   # 推理模型会先花掉一部分在思考上，给小了 content 会是空的
   send-retry: 1                   # 发送失败重试几次（NapCat 偶发超时）
   # P3 管理员体系：只有这些 QQ 能私聊机器人、能用管理指令（逗号分隔，留空=没有管理员）
   admin-qq: ${ZC_QQ_ADMIN_QQ:}
@@ -98,3 +99,5 @@ login:
 # 官方 api.deepseek.com 的 deepseek-chat 是纯文本，没有视觉能力；换网关就改这里，不用重新打包
 ai:
   vision-model: ${ZC_AI_VISION_MODEL:deepseek-v4-flash-vision-exp}
+  # 推理强度（留空=服务端默认）。推理模型把 token 花在思考上导致"看不到图"时，设 low 最有效
+  vision-effort: ${ZC_AI_VISION_EFFORT:}

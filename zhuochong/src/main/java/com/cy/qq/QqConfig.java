@@ -106,6 +106,10 @@ public class QqConfig {
     @Value("${qq.vision-max-images:2}")
     private int visionMaxImages;
 
+    /** 送视觉模型时给的 max_tokens（推理模型会先用掉一部分在思考上，给小了 content 就是空的） */
+    @Value("${qq.vision-max-tokens:4000}")
+    private int visionMaxTokens;
+
     /** 发送失败重试次数 */
     @Value("${qq.send-retry:1}")
     private int sendRetry;
@@ -269,6 +273,10 @@ public class QqConfig {
 
     public int getVisionMaxImages() {
         return Math.max(1, visionMaxImages);
+    }
+
+    public int getVisionMaxTokens() {
+        return Math.max(200, visionMaxTokens);
     }
 
     public int getSendRetry() {
