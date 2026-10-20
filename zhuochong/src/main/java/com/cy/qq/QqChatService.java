@@ -158,7 +158,7 @@ public class QqChatService {
 
     // ===== 内部 =====
 
-    /** 逐张看图；全部失败返回空串 */
+    /** 逐张看图；全部失败返回空串。单张失败不影响其它张（图片处理可能抛 Error，例如无 X11 的 AWT 初始化） */
     private String describeImages(List<String> imageUrls) {
         if (imageUrls == null || imageUrls.isEmpty()) return "";
         if (!config.isVisionEnabled()) {
@@ -172,7 +172,13 @@ public class QqChatService {
                 System.out.println("[QQ] 图片超过 " + config.getVisionMaxImages() + " 张，其余忽略");
                 break;
             }
-            String desc = imageService.describe(url);
+            String desc = null;
+            try {
+                desc = imageService.describe(url);
+            } catch (Throwable t) {
+                // AWTError 这类 Error 也要接住，否则整条回复会直接变成兜底文案
+                System.out.println("[QQ] 图片处理异常（" + t.getClass().getSimpleName() + "）: " + t.getMessage());
+            }
             if (desc != null && !desc.isEmpty()) {
                 seen++;
                 sb.append(seen == 1 ? "" : "；").append("第").append(seen).append("张：").append(desc);

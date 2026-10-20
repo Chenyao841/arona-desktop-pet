@@ -536,13 +536,14 @@ public class DeepSeekService {
     }
 
     private VisionOnce visionOnce(AiConfig cfg, String apiUrl, String imageBase64, String prompt,
-                                  int maxTokens, String effortParam) {
+                                  int maxTokens, String effortParam, String mime) {
         VisionOnce out = new VisionOnce();
+        String m = (mime == null || mime.trim().isEmpty()) ? "image/jpeg" : mime.trim();
         String body = "{\"model\":\"" + visionModelName() + "\"," +
                 "\"max_tokens\":" + maxTokens + effortParam + "," +
                 "\"messages\":[{\"role\":\"user\",\"content\":[" +
                 "{\"type\":\"text\",\"text\":" + toJsonStr(prompt) + "}," +
-                "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64," + imageBase64 + "\"}}" +
+                "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:" + m + ";base64," + imageBase64 + "\"}}" +
                 "]}]}";
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -584,6 +585,13 @@ public class DeepSeekService {
      * 这样不用人工调参也能自愈。
      */
     public String chatVisionContentOnly(String imageBase64, String prompt, int maxTokens) {
+        return chatVisionContentOnly(imageBase64, prompt, maxTokens, "image/jpeg");
+    }
+
+    /**
+     * @param mime data URL 里的 MIME（缩放成功是 image/jpeg；直接送原图时可能是 png/webp）
+     */
+    public String chatVisionContentOnly(String imageBase64, String prompt, int maxTokens, String mime) {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
@@ -597,10 +605,10 @@ public class DeepSeekService {
         int tokens = Math.max(200, maxTokens);
         System.out.println("[视觉] 模型=" + visionModelName() + "，max_tokens=" + tokens
                 + (effort.isEmpty() ? "" : "，reasoning_effort=" + effort)
-                + "，图片 base64 长度=" + (imageBase64 == null ? 0 : imageBase64.length()));
+                + "，图片 base64 长度=" + (imageBase64 == null ? 0 : imageBase64.length()) + "，mime=" + mime);
 
         for (int attempt = 1; attempt <= 2; attempt++) {
-            VisionOnce r = visionOnce(cfg, apiUrl, imageBase64, prompt, tokens, effortParam);
+            VisionOnce r = visionOnce(cfg, apiUrl, imageBase64, prompt, tokens, effortParam, mime);
             if (r.content != null && !r.content.trim().isEmpty()) return r.content;
             System.out.println("[视觉] 第 " + attempt + " 次没拿到 content（finish=" + r.finish
                     + "，thinking=" + r.reasoningLen + " 字符，max_tokens=" + tokens + "）"

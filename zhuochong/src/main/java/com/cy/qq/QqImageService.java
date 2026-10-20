@@ -32,6 +32,28 @@ import java.util.Base64;
 @Service
 public class QqImageService {
 
+    /**
+     * ★ 关键修复：图片缩放用的是 java.awt（BufferedImage/Graphics2D）。
+     * 桌面端为了截屏把 java.awt.headless 强制成了 false，但云端服务器没有 X11，
+     * AWT 一初始化就抛 {@code java.awt.AWTError: Can't connect to X11 window server}（Error 而非 Exception），
+     * 结果整条回复直接变兜底文案，日志里连 [视觉] 都不会出现。
+     *
+     * <p>headless=true 下 BufferedImage / Graphics2D / ImageIO 都是可用的，所以：
+     * 只在「没有图形环境」（Linux/Unix 且没有 DISPLAY）时把这个属性钉成 true。
+     * Windows/macOS 或带 DISPLAY 的机器不受影响，桌面截屏照旧。
+     */
+    static {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String display = System.getenv("DISPLAY");
+        String wayland = System.getenv("WAYLAND_DISPLAY");
+        boolean windowsOrMac = os.contains("win") || os.contains("mac");
+        boolean hasDisplay = (display != null && !display.isEmpty()) || (wayland != null && !wayland.isEmpty());
+        if (!windowsOrMac && !hasDisplay) {
+            System.setProperty("java.awt.headless", "true");
+            System.out.println("[QQ] 无图形环境（无 DISPLAY）→ 图片处理使用 headless 模式（不连 X11）");
+        }
+    }
+
     /** 单张图最大下载体积 */
     private static final int MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -83,20 +105,32 @@ public class QqImageService {
             if (raw == null) return null;
         }
 
-        byte[] jpeg = toJpeg(raw, Math.max(200, config.getVisionMaxEdge()));
-        if (jpeg == null) {
-            System.out.println("[QQ] 图片解码失败（可能不是常见格式）: " + url);
-            return null;
+        // 优先缩到 ≤800px 再送；缩放失败（老版本服务器 AWT 初始化失败等）就直接送原图，
+        // 宁可多花一点 token，也别让整条回复变成"看不清"。
+        String base64;
+        String mime;
+        byte[] jpeg = null;
+        try {
+            jpeg = toJpeg(raw, Math.max(200, config.getVisionMaxEdge()));
+        } catch (Throwable t) {
+            System.out.println("[QQ] 图片缩放失败（" + t.getClass().getSimpleName() + ": " + t.getMessage() + "）→ 直接送原图");
         }
-        String base64 = Base64.getEncoder().encodeToString(jpeg);
-        System.out.println("[QQ] 图片已缩放 " + raw.length / 1024 + "KB → " + jpeg.length / 1024
-                + "KB，送视觉模型（" + (System.currentTimeMillis() - t0) + "ms）");
+        if (jpeg != null) {
+            base64 = Base64.getEncoder().encodeToString(jpeg);
+            mime = "image/jpeg";
+            System.out.println("[QQ] 图片已缩放 " + raw.length / 1024 + "KB → " + jpeg.length / 1024
+                    + "KB，送视觉模型（" + (System.currentTimeMillis() - t0) + "ms）");
+        } else {
+            base64 = Base64.getEncoder().encodeToString(raw);
+            mime = sniffMime(raw);
+            System.out.println("[QQ] 原图直送视觉模型（" + raw.length / 1024 + "KB，" + mime + "）");
+        }
+
         // 用 chatVisionContentOnly：只认正式回答，不接受 reasoning_content 兜底。
         // 因为现在的视觉模型多是"推理模型"，思考过程会跑到 reasoning_content 里；
         // 把思考过程当图片描述用会得到一堆"我们需要回答这个问题…"的废话。
-        // max_tokens 默认 4000（可配 ZC_QQ_VISION_MAX_TOKENS）：推理模型会先用掉一部分在思考上，
-        // 给小了 content 就是空的（实测 600 就被吃光）。
-        String desc = deepSeekService.chatVisionContentOnly(base64, PROMPT, config.getVisionMaxTokens());
+        // max_tokens 默认 4000（可配 ZC_QQ_VISION_MAX_TOKENS），且拿不到 content 会自动加倍重试。
+        String desc = deepSeekService.chatVisionContentOnly(base64, PROMPT, config.getVisionMaxTokens(), mime);
         if (desc == null || desc.trim().isEmpty()) {
             System.out.println("[QQ] 视觉模型没有返回描述（模型不支持读图 / max_tokens 被思考吃光 / 未配 Key）");
             return null;
@@ -104,6 +138,15 @@ public class QqImageService {
         String clean = desc.trim().replaceAll("\\s+", " ");
         System.out.println("[QQ] 图片理解: " + (clean.length() > 120 ? clean.substring(0, 120) + "…" : clean));
         return clean;
+    }
+
+    /** 看文件头猜 MIME（不缩放直接送原图时用，避免把 PNG 声明成 JPEG） */
+    private static String sniffMime(byte[] b) {
+        if (b.length > 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') return "image/png";
+        if (b.length > 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8) return "image/jpeg";
+        if (b.length > 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F') return "image/webp";
+        if (b.length > 3 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F') return "image/gif";
+        return "image/jpeg";
     }
 
     private byte[] download(String url) {
