@@ -86,7 +86,22 @@ public class QqImageService {
      * @param url OneBot {@code image} 段里的 url（也接受 {@code base64://} 内联图，NapCat 有时这么给）
      * @return 中文描述；失败返回 null（调用方降级为「群友发了一张图」）
      */
-    public String describe(String url) {
+    /** 下载 + 缩放后的图片（留底/重读用，不再重复下载） */
+    public static final class Prepared {
+        public final String base64;
+        public final String mime;
+
+        Prepared(String base64, String mime) {
+            this.base64 = base64;
+            this.mime = mime;
+        }
+    }
+
+    /**
+     * 只把图准备好（下载 → 缩放 → base64），不做视觉理解。
+     * 这样同一张图可以先描述一次、留底，后面被追问时用不同提示词**重读**。
+     */
+    public Prepared prepare(String url) {
         if (url == null || url.isEmpty()) return null;
         long t0 = System.currentTimeMillis();
 
@@ -105,10 +120,8 @@ public class QqImageService {
             if (raw == null) return null;
         }
 
-        // 优先缩到 ≤800px 再送；缩放失败（老版本服务器 AWT 初始化失败等）就直接送原图，
+        // 优先缩到 ≤800px 再送；缩放失败（AWT 初始化失败等）就直接送原图，
         // 宁可多花一点 token，也别让整条回复变成"看不清"。
-        String base64;
-        String mime;
         byte[] jpeg = null;
         try {
             jpeg = toJpeg(raw, Math.max(200, config.getVisionMaxEdge()));
@@ -116,27 +129,37 @@ public class QqImageService {
             System.out.println("[QQ] 图片缩放失败（" + t.getClass().getSimpleName() + ": " + t.getMessage() + "）→ 直接送原图");
         }
         if (jpeg != null) {
-            base64 = Base64.getEncoder().encodeToString(jpeg);
-            mime = "image/jpeg";
             System.out.println("[QQ] 图片已缩放 " + raw.length / 1024 + "KB → " + jpeg.length / 1024
-                    + "KB，送视觉模型（" + (System.currentTimeMillis() - t0) + "ms）");
-        } else {
-            base64 = Base64.getEncoder().encodeToString(raw);
-            mime = sniffMime(raw);
-            System.out.println("[QQ] 原图直送视觉模型（" + raw.length / 1024 + "KB，" + mime + "）");
+                    + "KB（" + (System.currentTimeMillis() - t0) + "ms）");
+            return new Prepared(Base64.getEncoder().encodeToString(jpeg), "image/jpeg");
         }
+        System.out.println("[QQ] 原图直送（" + raw.length / 1024 + "KB）");
+        return new Prepared(Base64.getEncoder().encodeToString(raw), sniffMime(raw));
+    }
 
-        // 用 chatVisionContentOnly：只认正式回答，不接受 reasoning_content 兜底。
-        // 因为现在的视觉模型多是"推理模型"，思考过程会跑到 reasoning_content 里；
-        // 把思考过程当图片描述用会得到一堆"我们需要回答这个问题…"的废话。
-        // max_tokens 默认 4000（可配 ZC_QQ_VISION_MAX_TOKENS），且拿不到 content 会自动加倍重试。
-        String desc = deepSeekService.chatVisionContentOnly(base64, PROMPT, config.getVisionMaxTokens(), mime);
+    /** 用指定提示词描述一张已准备好的图（重读时把"当前问题"当提示词传进来） */
+    public String describePrepared(Prepared p, String prompt) {
+        if (p == null) return null;
+        String desc = deepSeekService.chatVisionContentOnly(p.base64, prompt, config.getVisionMaxTokens(), p.mime);
         if (desc == null || desc.trim().isEmpty()) {
-            System.out.println("[QQ] 视觉模型没有返回描述（模型不支持读图 / max_tokens 被思考吃光 / 未配 Key）");
+            System.out.println("[QQ] 视觉模型没有返回内容（模型不支持读图 / max_tokens 被思考吃光 / 未配 Key）");
             return null;
         }
-        String clean = desc.trim().replaceAll("\\s+", " ");
-        System.out.println("[QQ] 图片理解: " + (clean.length() > 120 ? clean.substring(0, 120) + "…" : clean));
+        return desc.trim().replaceAll("\\s+", " ");
+    }
+
+    /**
+     * 下载 → 缩放 → 视觉描述（首次看图用默认提示词）。
+     *
+     * @param url OneBot {@code image} 段里的 url（也接受 {@code base64://} 内联图）
+     */
+    public String describe(String url) {
+        Prepared p = prepare(url);
+        if (p == null) return null;
+        String clean = describePrepared(p, PROMPT);
+        if (clean != null) {
+            System.out.println("[QQ] 图片理解: " + (clean.length() > 120 ? clean.substring(0, 120) + "…" : clean));
+        }
         return clean;
     }
 

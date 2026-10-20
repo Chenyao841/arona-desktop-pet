@@ -110,6 +110,14 @@ public class QqConfig {
     @Value("${qq.vision-max-tokens:4000}")
     private int visionMaxTokens;
 
+    /** 被追问图片细节时，是否重新读一遍留底的原图（false = 只用第一次的 90 字描述） */
+    @Value("${qq.image-reread:true}")
+    private boolean imageReread;
+
+    /** 一次追问最多重读几张图 */
+    @Value("${qq.image-reread-max:2}")
+    private int imageRereadMax;
+
     /** 发送失败重试次数 */
     @Value("${qq.send-retry:1}")
     private int sendRetry;
@@ -281,6 +289,14 @@ public class QqConfig {
 
     public int getVisionMaxTokens() {
         return Math.max(200, visionMaxTokens);
+    }
+
+    public boolean isImageReread() {
+        return imageReread;
+    }
+
+    public int getImageRereadMax() {
+        return Math.max(1, imageRereadMax);
     }
 
     public int getSendRetry() {

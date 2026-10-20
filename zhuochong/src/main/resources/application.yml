@@ -68,6 +68,9 @@ qq:
   vision-max-edge: 800
   vision-max-images: 2
   vision-max-tokens: ${ZC_QQ_VISION_MAX_TOKENS:4000}   # 推理模型会先花掉一部分在思考上，给小了 content 会是空的
+  # 被追问图片细节时，重读留底的原图（拿"当前问题"当提示词）；false = 只用第一次的 90 字描述
+  image-reread: ${ZC_QQ_IMAGE_REREAD:true}
+  image-reread-max: 2
   send-retry: 1                   # 发送失败重试几次（NapCat 偶发超时）
   # P3 管理员体系：只有这些 QQ 能私聊机器人、能用管理指令（逗号分隔，留空=没有管理员）
   admin-qq: ${ZC_QQ_ADMIN_QQ:}

@@ -4,6 +4,7 @@ import com.cy.service.DeepSeekService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -57,6 +58,16 @@ public class QqChatService {
     @Autowired
     private QqRuntimeState runtime;
 
+    @Autowired
+    private QqImageMemory imageMemory;
+
+    /** 首次看图的提示词（客观描述，限 90 字） */
+    private static final String IMAGE_PROMPT =
+            "这是 QQ 群里群友发来的一张图片。请客观、简短地描述你能看到的内容："
+                    + "画面主体是什么（人物/动物/物品/截图/表情包）、主要颜色、有没有明显文字（照抄关键文字）。"
+                    + "90 字以内，只讲看到的事实，不要评价、不要寒暄。"
+                    + "即使不完全确定也要尽力描述；只有当整张图是纯色/全黑/完全空白时才回答「看不清」。";
+
     // ===== 思考 =====
 
     /**
@@ -70,10 +81,12 @@ public class QqChatService {
         String speaker = (nickname == null || nickname.trim().isEmpty()) ? ("QQ" + userId) : nickname.trim();
         usage.beginGroup(groupId);
         try {
-            String vision = describeImages(imageUrls);
+            String sessionKey = QqImageMemory.sessionKey(false, groupId);
+            String vision = describeImages(sessionKey, imageUrls);
+            String reread = rereadIfAsked(sessionKey, text, imageUrls);
             String userMessage = buildUserMessage(groupId, userId, speaker, text, vision, imageUrls, fromAdmin);
-            // ★ 把图片描述一起入库（ai_history.user_text）：否则下一轮问"图里你长什么样"，
-            //   模型看不到任何图片信息（历史里只有原文，往往是空的）。
+            if (!reread.isEmpty()) userMessage = userMessage + "\n" + reread;
+            // 图片描述一起入库：下一轮还能记得"他发过这张图"
             String storeText = buildStoreText(text, vision);
             DeepSeekService.AiResult r = deepSeekService.chat(
                     userMessage, storeText, groupSessionId(groupId),
@@ -97,7 +110,9 @@ public class QqChatService {
         // 私聊的消耗记在负数群号下：不计入"群排行"，但仍算进每日额度
         usage.beginGroup(-userId);
         try {
-            String vision = describeImages(imageUrls);
+            String sessionKey = QqImageMemory.sessionKey(true, userId);
+            String vision = describeImages(sessionKey, imageUrls);
+            String reread = rereadIfAsked(sessionKey, text, imageUrls);
             boolean hasImage = imageUrls != null && !imageUrls.isEmpty();
             StringBuilder um = new StringBuilder();
             um.append("[QQ私聊] ").append(nickname).append("（QQ ").append(userId)
@@ -109,6 +124,7 @@ public class QqChatService {
             }
             if (text != null && !text.trim().isEmpty()) um.append("：").append(text);
             else um.append("（没写字）");
+            if (!reread.isEmpty()) um.append("\n").append(reread);
             String storeText = buildStoreText(text, vision);
             DeepSeekService.AiResult r = deepSeekService.chat(
                     um.toString(), storeText, privateSessionId(userId), "qq_chat_admin", null, false,
@@ -172,8 +188,8 @@ public class QqChatService {
         return t.isEmpty() ? tag : t + " " + tag;
     }
 
-    /** 逐张看图；全部失败返回空串。单张失败不影响其它张（图片处理可能抛 Error，例如无 X11 的 AWT 初始化） */
-    private String describeImages(List<String> imageUrls) {
+    /** 逐张看图（并把图留底、编号）；全部失败返回空串。单张失败不影响其它张 */
+    private String describeImages(String sessionKey, List<String> imageUrls) {
         if (imageUrls == null || imageUrls.isEmpty()) return "";
         if (!config.isVisionEnabled()) {
             System.out.println("[QQ] 收到 " + imageUrls.size() + " 张图，但图片识别已关闭（ZC_QQ_VISION=false）");
@@ -186,19 +202,74 @@ public class QqChatService {
                 System.out.println("[QQ] 图片超过 " + config.getVisionMaxImages() + " 张，其余忽略");
                 break;
             }
-            String desc = null;
             try {
-                desc = imageService.describe(url);
+                QqImageService.Prepared p = imageService.prepare(url);
+                if (p == null) continue;
+                String desc = imageService.describePrepared(p, IMAGE_PROMPT);
+                // 无论有没有描述成功都留底：有描述能立刻用，没描述也还能在追问时重读
+                int tag = imageMemory.remember(sessionKey, p, desc);
+                if (desc != null && !desc.isEmpty()) {
+                    seen++;
+                    sb.append(seen == 1 ? "" : "；").append("第").append(seen).append("张〔图#")
+                            .append(tag).append("〕：").append(desc);
+                    System.out.println("[QQ] 图片理解〔图#" + tag + "〕: "
+                            + (desc.length() > 100 ? desc.substring(0, 100) + "…" : desc));
+                } else if (tag > 0) {
+                    System.out.println("[QQ] 图片已留底〔图#" + tag + "〕，但这次没描述出来（追问时会重读）");
+                }
             } catch (Throwable t) {
-                // AWTError 这类 Error 也要接住，否则整条回复会直接变成兜底文案
+                // AWTError 这类 Error 也要接住，否则整条回复会变成兜底文案
                 System.out.println("[QQ] 图片处理异常（" + t.getClass().getSimpleName() + "）: " + t.getMessage());
-            }
-            if (desc != null && !desc.isEmpty()) {
-                seen++;
-                sb.append(seen == 1 ? "" : "；").append("第").append(seen).append("张：").append(desc);
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * 被追问图片细节时，拿**当前这句话**当提示词重读留底的原图。
+     *
+     * <p>触发条件：这条消息没带新图 + 文字里提到图/照片/那张/上面那张/#编号。
+     *
+     * @return 要拼进本轮上下文的补充块；没触发返回空串
+     */
+    private String rereadIfAsked(String sessionKey, String text, List<String> imageUrls) {
+        if (!config.isImageReread() || !config.isVisionEnabled()) return "";
+        if (imageUrls != null && !imageUrls.isEmpty()) return "";   // 这条本身带图，用新的就行
+        if (text == null || text.trim().isEmpty()) return "";
+        String t = text.trim();
+        boolean mentionsImage = t.matches("(?s).*(图|照片|相片|截图|表情包|那张|这张|上面那|刚才那|#\\d+).*");
+        if (!mentionsImage) return "";
+
+        List<QqImageMemory.Stored> picks = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("#(\\d+)").matcher(t);
+        if (m.find()) {
+            try {
+                QqImageMemory.Stored s = imageMemory.byId(sessionKey, Integer.parseInt(m.group(1)));
+                if (s != null) picks.add(s);
+            } catch (Exception ignored) {
+            }
+        }
+        if (picks.isEmpty()) picks.addAll(imageMemory.recent(sessionKey, config.getImageRereadMax()));
+        if (picks.isEmpty()) return "";
+
+        StringBuilder out = new StringBuilder("〔你重新看了之前那张图，这次是按对方的问题去看的〕\n");
+        String ask = "对方现在问的是：「" + t + "」。请针对这个问题观察这张图，"
+                + "只回答图里确实看得到的内容（颜色、文字、姿势、物品等），看不到就说看不到。120 字以内。";
+        for (QqImageMemory.Stored s : picks) {
+            String desc;
+            try {
+                desc = imageService.describePrepared(new QqImageService.Prepared(s.base64, s.mime), ask);
+            } catch (Throwable th) {
+                System.out.println("[QQ] 重读图片异常: " + th);
+                continue;
+            }
+            if (desc == null || desc.isEmpty()) continue;
+            out.append("· 图#").append(s.id);
+            if (s.firstDesc != null && !s.firstDesc.isEmpty()) out.append("（首次看到的是：").append(s.firstDesc).append("）");
+            out.append(" → 这次细看：").append(desc).append('\n');
+            System.out.println("[QQ] 重读〔图#" + s.id + "〕: " + (desc.length() > 100 ? desc.substring(0, 100) + "…" : desc));
+        }
+        return out.length() > 30 ? out.toString() : "";
     }
 
     private String buildUserMessage(long groupId, long userId, String speaker, String text, String vision,
