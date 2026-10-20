@@ -79,6 +79,10 @@ public class DeepSeekService {
     @org.springframework.beans.factory.annotation.Value("${ai.vision-effort:}")
     private String visionEffort;
 
+    /** QQ 群聊是否也注入「风格语料」（和桌宠一样的参考语境）；默认开，可用 ai.style-for-qq=false 关 */
+    @org.springframework.beans.factory.annotation.Value("${ai.style-for-qq:true}")
+    private boolean styleForQq;
+
     private String visionModelName() {
         return esc(visionModel, "deepseek-v4-flash-vision-exp");
     }
@@ -334,8 +338,11 @@ public class DeepSeekService {
             sp.append("- 如果管理员问起机器人自身的状态（谁在用、花了多少 token 等），只做简短自然的口语回答，具体数据请他用管理指令查。\n");
         }
 
-        // 阶段四：风格语料库——按用户输入命中触发标签时，召回相关场景作为风格参考注入（仅日常闲聊）
-        if ("chat".equals(userOperation)) {
+        // 阶段四：风格语料库——按用户输入命中触发标签时，召回相关场景作为风格参考注入。
+        // 桌宠闲聊必开；QQ 群默认也开（ai.style-for-qq=false 可关掉）。
+        boolean wantStyle = "chat".equals(userOperation)
+                || (styleForQq && userOperation != null && userOperation.startsWith("qq_chat"));
+        if (wantStyle) {
             List<com.cy.pojo.StyleExemplar> exs = recallExemplars(userMessage);
             if (exs != null && !exs.isEmpty()) {
                 sp.append("\n【风格参考】以下是阿罗娜在类似情况下的对话风格示例（格式：每行=一个气泡；括号内=表情/动作；「内心os：」开头=内心独白；连续对话仅在换人处标注说话人，如「阿罗娜：」「老师：」）。请模仿其节奏、语气、内心独白与表情的使用方式，但不要照抄具体内容：\n");

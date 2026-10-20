@@ -33,6 +33,13 @@ public class QqUsageService implements DeepSeekService.UsageListener {
     @Autowired
     private DeepSeekService deepSeekService;
 
+    /** 额度报警用（私聊通知管理员）；只在超阈值时发，不会有循环 */
+    @Autowired
+    private QqReplyService replyService;
+
+    /** 今天已发过的报警（key = 日期:阈值），跨天自动清空 */
+    private final java.util.Set<String> alertsSent = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** 当前线程正在服务哪个群（0 = 桌宠端 / 无上下文） */
     private final ThreadLocal<Long> currentGroup = new ThreadLocal<>();
 
@@ -86,10 +93,48 @@ public class QqUsageService implements DeepSeekService.UsageListener {
         if (groupId != 0) {
             todayCalls.incrementAndGet();
             long now = todayTokens.addAndGet(used);
+            checkQuotaAlerts(now);
             if (limit() > 0 && now > limit()) {
                 System.out.println("[QQ] ⚠ 今日 token 已超限：" + now + " / " + limit() + "，暂停模型调用");
             }
         }
+    }
+
+    /**
+     * 额度报警（新）：用量达到 {@code qq.quota-alert-percent}% 时，以及用满 100% 时，
+     * 各私聊提醒一次管理员（每天每个阈值只提醒一次）。限额为 0（不限）时不提醒。
+     */
+    private void checkQuotaAlerts(long used) {
+        long lim = limit();
+        if (lim <= 0) return;
+        int warnPct = config.getQuotaAlertPercent();
+        try {
+            if (warnPct > 0 && used * 100 >= lim * warnPct) {
+                sendQuotaAlertOnce(today + ":warn",
+                        "【额度提醒】今天的 token 已用到 " + pct(used, lim) + "%（" + used + " / " + lim + "）。\n"
+                                + "要调高就回我：/limit 400000（0 = 不限）");
+            }
+            if (used >= lim) {
+                sendQuotaAlertOnce(today + ":full",
+                        "【额度已用尽】今天 " + lim + " tokens 用完了，群里再 @ 我只会回固定说明，不再调模型。\n"
+                                + "调高：/limit 400000　　取消上限：/limit off");
+            }
+        } catch (Exception e) {
+            System.out.println("[QQ] 额度报警发送失败: " + e.getMessage());
+        }
+    }
+
+    private int pct(long used, long lim) {
+        return lim <= 0 ? 0 : (int) Math.min(999, used * 100 / lim);
+    }
+
+    private void sendQuotaAlertOnce(String key, String text) {
+        if (!alertsSent.add(key)) return; // 今天这个阈值已经提醒过
+        int sent = 0;
+        for (Long admin : config.getAdminQqs()) {
+            if (replyService.replyPrivate(admin, text) > 0) sent++;
+        }
+        System.out.println("[QQ] 额度报警已发给 " + sent + " 位管理员（" + key + "）");
     }
 
     /** 跨天自动清零本地计数（服务不重启也不会把昨天的用量算今天） */
@@ -99,6 +144,7 @@ public class QqUsageService implements DeepSeekService.UsageListener {
             today = t;
             todayTokens.set(0);
             todayCalls.set(0);
+            alertsSent.clear(); // 跨天重置报警，新的一天重新提醒
         }
     }
 

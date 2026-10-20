@@ -134,6 +134,10 @@ public class QqConfig {
     @Value("${qq.daily-token-limit:0}")
     private long dailyTokenLimit;
 
+    /** 额度用到百分之多少时私聊提醒管理员（0 = 不提醒）；用满时无论设多少都会提醒一次 */
+    @Value("${qq.quota-alert-percent:80}")
+    private int quotaAlertPercent;
+
     /** 固定回复延迟（秒）：收到 @ 后至少等这么久才回；0 = 立刻回（P4） */
     @Value("${qq.reply-delay-sec:3}")
     private int replyDelaySec;
@@ -313,6 +317,10 @@ public class QqConfig {
 
     public long getDailyTokenLimit() {
         return dailyTokenLimit;
+    }
+
+    public int getQuotaAlertPercent() {
+        return quotaAlertPercent;
     }
 
     public int getReplyDelaySec() {

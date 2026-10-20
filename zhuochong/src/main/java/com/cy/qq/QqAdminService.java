@@ -66,6 +66,12 @@ public class QqAdminService {
     @Autowired
     private QqReplyQueue replyQueue;
 
+    @Autowired
+    private com.cy.mapper.AiPromptMapper aiPromptMapper;
+
+    @Autowired
+    private com.cy.mapper.StyleExemplarMapper styleExemplarMapper;
+
     // ===== 鉴权 =====
 
     public boolean isAdmin(long userId) {
@@ -131,6 +137,8 @@ public class QqAdminService {
             case "ban": case "拉黑":
             case "unban": case "解黑": case "解除拉黑":
             case "blacklist": case "黑名单":
+            case "prompt": case "提示词":
+            case "style": case "语料":
                 return true;
             default:
                 return false;
@@ -222,6 +230,12 @@ public class QqAdminService {
             case "emoji": case "表情":
                 return emojiReport(parts);
 
+            case "prompt": case "提示词":
+                return promptCommand(parts);
+
+            case "style": case "语料":
+                return styleReport();
+
             case "delay": case "延迟": {
                 if (parts.length < 2) return "当前固定回复延迟：" + tuning.replyDelaySec() + "s\n用法：/delay 3（0 = 立刻回）";
                 int sec = (int) parseLong(parts[1], -1);
@@ -287,6 +301,105 @@ public class QqAdminService {
         }
     }
 
+    // ===== 提示词 / 风格语料（管理员查询与修改） =====
+
+    /**
+     * <pre>
+     * /prompt                列出所有提示词（type / 版本 / 字数 / 开头）
+     * /prompt show system    看某条全文（自动分段；超长会提示去管理页）
+     * /prompt set system 内容 整条覆盖（谨慎，长度上限 4000 字）
+     * /prompt add system 内容 追加一行（最常用，比如加一条群规）
+     * </pre>
+     */
+    private String promptCommand(String[] parts) {
+        if (parts.length < 2) return promptList();
+        String sub = parts[1].toLowerCase();
+        if ("show".equals(sub) || "看".equals(sub) || "查看".equals(sub)) {
+            if (parts.length < 3) return "用法：/prompt show system|function";
+            return promptShow(parts[2]);
+        }
+        if ("set".equals(sub) || "改".equals(sub) || "覆盖".equals(sub)) {
+            if (parts.length < 4) return "用法：/prompt set system 你要设定的完整内容";
+            return promptWrite(parts[2], rest(parts, 3), false);
+        }
+        if ("add".equals(sub) || "追加".equals(sub)) {
+            if (parts.length < 4) return "用法：/prompt add system 要追加的一行";
+            return promptWrite(parts[2], rest(parts, 3), true);
+        }
+        // 兼容 /prompt system 直接看
+        return promptShow(parts[1]);
+    }
+
+    private String promptList() {
+        List<com.cy.pojo.AiPrompt> all = aiPromptMapper.findAll();
+        if (all == null || all.isEmpty()) return "库里没有任何提示词（ai_prompt 为空），可以去管理页「基础设置」新建";
+        StringBuilder sb = new StringBuilder("【提示词】（桌宠和 QQ 共用这一套）\n");
+        for (com.cy.pojo.AiPrompt p : all) {
+            String c = p.getContent() == null ? "" : p.getContent();
+            String head2 = c.replace("\n", " ");
+            if (head2.length() > 50) head2 = head2.substring(0, 50) + "…";
+            sb.append("- ").append(p.getPrompt_type()).append("（v").append(p.getVersion())
+                    .append("，").append(c.length()).append(" 字）").append(head2).append('\n');
+        }
+        sb.append("查看：/prompt show system　修改：/prompt set system 内容　追加：/prompt add system 内容\n");
+        sb.append("注意：QQ 群和桌宠共用这些提示词；QQ 渠道规则（短回复/防注入/称呼管理员）是代码里额外追加的。");
+        return sb.toString();
+    }
+
+    private String promptShow(String type) {
+        com.cy.pojo.AiPrompt p = aiPromptMapper.findByType(type);
+        if (p == null) return "没有 prompt_type=" + type + " 的提示词。可用：" + typesJoined();
+        String c = p.getContent() == null ? "" : p.getContent();
+        String tail = "\n（v" + p.getVersion() + "，" + c.length() + " 字）";
+        // QQ 单次回复最多 6 段 × 300 字 ≈ 1800，超出会被截断，这里提前说明
+        if (c.length() > 1500) {
+            return c.substring(0, 1500) + "\n…（后面还有 " + (c.length() - 1500)
+                    + " 字没发，完整内容请去管理页「基础设置」查看/编辑）" + tail;
+        }
+        return c + tail;
+    }
+
+    private String promptWrite(String type, String content, boolean append) {
+        if (content == null || content.trim().isEmpty()) return "内容不能为空";
+        if (content.length() > 4000) return "内容太长（" + content.length() + " 字，上限 4000），请去管理页编辑";
+        com.cy.pojo.AiPrompt p = aiPromptMapper.findByType(type);
+        if (p == null) return "没有 prompt_type=" + type + " 的提示词。可用：" + typesJoined();
+        String old = p.getContent() == null ? "" : p.getContent();
+        String neu = append ? (old.isEmpty() ? content : old + "\n" + content) : content;
+        p.setContent(neu);
+        aiPromptMapper.update(p);
+        System.out.println("[QQ] 管理员修改提示词 " + type + "（" + old.length() + " → " + neu.length() + " 字）");
+        return "已" + (append ? "追加到" : "覆盖") + "提示词 " + type + "（现在 " + neu.length() + " 字，v"
+                + p.getVersion() + "）\n下一条消息开始生效；要核对就 /prompt show " + type;
+    }
+
+    private String typesJoined() {
+        StringBuilder sb = new StringBuilder();
+        for (com.cy.pojo.AiPrompt x : aiPromptMapper.findAll()) {
+            if (sb.length() > 0) sb.append(" / ");
+            sb.append(x.getPrompt_type());
+        }
+        return sb.length() == 0 ? "（空）" : sb.toString();
+    }
+
+    private String styleReport() {
+        int n = 0;
+        try {
+            List<com.cy.pojo.StyleExemplar> all = styleExemplarMapper.findAll();
+            if (all != null) n = all.size();
+        } catch (Exception ignored) {
+        }
+        return "【风格语料】共 " + n + " 条（表 style_exemplar）\n"
+                + "· 桌宠闲聊：按输入命中标签召回，注入「【风格参考】」段\n"
+                + "· QQ 群聊：默认也注入（和桌宠同一套语料），可用 ai.style-for-qq=false 关掉\n"
+                + "· 语料本身请在管理页「基础设置/风格语料」维护（QQ 里不支持批量编辑）";
+    }
+
+    private static String rest(String[] parts, int from) {
+        if (parts.length <= from) return "";
+        return String.join(" ", java.util.Arrays.copyOfRange(parts, from, parts.length)).trim();
+    }
+
     // ===== 各指令实现 =====
 
     /** 指令清单（私聊兜底与 /help 共用） */
@@ -306,6 +419,8 @@ public class QqAdminService {
                 + "\n/remember <群号> 立刻提炼长期记忆"
                 + "\n/ban <QQ> [原因] /unban <QQ> /blacklist 黑名单管理"
                 + "\n/emoji [gap 5|on|off] 表情包概况与调整"
+                + "\n/prompt [show|set|add] <system|function> 查看/修改人设提示词"
+                + "\n/style 风格语料概况（QQ 是否注入）"
                 + "\n（只有管理员 QQ 能用；私聊除指令外可以直接和我聊天）";
     }
 
