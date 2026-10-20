@@ -200,7 +200,7 @@ public class DeepSeekService {
         // ★ 空 Key 优雅降级：分发给别人后第一次运行常常还没填 Key，
         //   这时不要返回 null（上层会当成失败、页面可能什么都不显示），
         //   而是直接让阿罗娜说一句"去填 Key"，页面的 TTS/表情链路照常工作。
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) {
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) {
             AiResult noKey = new AiResult();
             noKey.boat_text = "尚未设置API Key，请前往ai模型网站获取并在基础设置中填写。";
             noKey.motion = "aluona_kunhuo.png";
@@ -359,7 +359,7 @@ public class DeepSeekService {
         bodySb.append(",\"messages\":[").append(msgs.toString()).append("]}");
         String body = bodySb.toString();
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
 
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
@@ -434,7 +434,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         System.out.println("[视觉] 请求图片 base64 长度=" + (imageBase64 != null ? imageBase64.length() : 0)
                 + "，提示词长度=" + (prompt != null ? prompt.length() : 0)
@@ -447,7 +447,7 @@ public class DeepSeekService {
                 "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64," + imageBase64 + "\"}}" +
                 "]}]}";
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -497,7 +497,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
                 "\"max_tokens\":" + maxTokens + "," +
@@ -505,7 +505,7 @@ public class DeepSeekService {
                 "{\"type\":\"text\",\"text\":" + toJsonStr(prompt) + "}," +
                 "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64," + imageBase64 + "\"}}" +
                 "]}]}";
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -538,7 +538,7 @@ public class DeepSeekService {
     public String chatVisionMulti(List<String> imageBase64List, String prompt) {        List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         StringBuilder content = new StringBuilder("[");
         content.append("{\"type\":\"text\",\"text\":").append(toJsonStr(prompt)).append("}");
@@ -549,7 +549,7 @@ public class DeepSeekService {
         String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
                 "\"max_tokens\":4096," +
                 "\"messages\":[{\"role\":\"user\",\"content\":" + content + "}]}";
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -587,7 +587,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         StringBuilder content = new StringBuilder("[");
         content.append("{\"type\":\"text\",\"text\":").append(toJsonStr(prompt)).append("}");
@@ -598,7 +598,7 @@ public class DeepSeekService {
         String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
                 "\"max_tokens\":4096," +
                 "\"messages\":[{\"role\":\"user\",\"content\":" + content + "}]}";
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -631,12 +631,12 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
         String body = "{\"model\":\"deepseek-chat\"," +
                 "\"max_tokens\":1024," +
                 "\"messages\":[{\"role\":\"system\",\"content\":" + toJsonStr(system) + "}," +
                 "{\"role\":\"user\",\"content\":" + toJsonStr(user) + "}]}";
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -666,7 +666,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         String sys = "你负责把用户对桌宠说的话，浓缩成一句给\"视觉模型\"的观察指令（视觉模型正在看用户电脑屏幕的截图，看不到用户说了什么）。规则：\n" +
                 "1. 若用户提到具体目标（某幅画、某个文件、某个网页、某个游戏画面等），明确指出要找它，并让它忽略屏幕上无关的东西（如桌面宠物自身、其它无关窗口、任务栏、壁纸）；\n" +
@@ -682,7 +682,7 @@ public class DeepSeekService {
                 "{\"role\":\"user\",\"content\":" + toJsonStr(user) + "}" +
                 "]}";
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -709,7 +709,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return -1;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return -1;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return -1;
 
         String sys = "你负责从屏幕 OCR 结果里选一个\"点击后能达成用户目的\"的文字元素。只输出该元素的编号（一个整数），不要输出任何其他内容。若没有合适目标，输出 -1。";
         String user = "屏幕 OCR 识别到的文字元素（格式：编号|文字|x|y|w|h，x/y 是左上角像素坐标，w/h 是宽高）：\n" + ocrListText
@@ -724,7 +724,7 @@ public class DeepSeekService {
                 "{\"role\":\"user\",\"content\":" + toJsonStr(user) + "}" +
                 "]}";
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -789,7 +789,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         String prompt = "根据文本情绪选择表情和音效，注意不能过多重复使用同一表情，回复JSON：\n" +
             "文本：" + boatText + "\n" +
@@ -806,7 +806,7 @@ public class DeepSeekService {
                 ",\"max_tokens\":200,\"temperature\":0.3" +
                 ",\"messages\":[{\"role\":\"user\",\"content\":" + toJsonStr(prompt) + "}]}";
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
 
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
@@ -845,7 +845,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return empty;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return empty;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return empty;
 
         StringBuilder sb = new StringBuilder("给下面每句话标注一个情境词（每句一个简短词）：\n");
         for (int i = 0; i < sentences.size(); i++) {
@@ -855,7 +855,7 @@ public class DeepSeekService {
         sb.append("只回复JSON数组，数量与句子数一致：[\"情境1\",\"情境2\",...]");
 
         String body = "{\"model\":\"deepseek-chat\",\"max_tokens\":200,\"temperature\":0.2,\"messages\":[{\"role\":\"user\",\"content\":" + toJsonStr(sb.toString()) + "}]}";
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
 
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -904,7 +904,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return null;
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
         String prompt = "原句：" + originalText + "\n" +
             "已匹配关键词：" + shortKeyword + "（" + shortKeyword.length() + "字）\n" +
@@ -917,7 +917,7 @@ public class DeepSeekService {
                 ",\"max_tokens\":100,\"temperature\":0.3" +
                 ",\"messages\":[{\"role\":\"user\",\"content\":" + toJsonStr(prompt) + "}]}";
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
 
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
@@ -954,7 +954,7 @@ public class DeepSeekService {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return new ArrayList<>();
         AiConfig cfg = configs.get(0);
-        if (cfg.getApi_key() == null || cfg.getApi_key().isEmpty()) return new ArrayList<>();
+        if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return new ArrayList<>();
 
         StringBuilder prompt = new StringBuilder("请推荐15首歌曲（华语/日语流行、轻音乐均可），风格尽量多样，返回严格JSON数组，只返回数组不要任何多余文字，格式：[\"歌名\", \"歌名\"]");
         try {
@@ -972,7 +972,7 @@ public class DeepSeekService {
                 ",\"max_tokens\":500,\"temperature\":0.8" +
                 ",\"messages\":[{\"role\":\"user\",\"content\":" + toJsonStr(prompt.toString()) + "}]}";
 
-        String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -1056,7 +1056,7 @@ public class DeepSeekService {
             String body = "{\"model\":\"" + esc(cfg.getModel(), "deepseek-chat") + "\""
                 + ",\"max_tokens\":1024,\"temperature\":0.5"
                 + ",\"messages\":[{\"role\":\"user\",\"content\":" + toJsonStr(prompt) + "}]}";
-            String apiUrl = cfg.getApi_url() != null ? cfg.getApi_url() : "https://api.deepseek.com/v1/chat/completions";
+            String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(cfg.getApi_key());
