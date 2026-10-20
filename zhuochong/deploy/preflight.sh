@@ -105,9 +105,27 @@ if container_up "$MYSQL_CONTAINER"; then
     if [ "${pw:-x}" = "100" ]; then pass "pictionary_word = 100"; else warnx "pictionary_word = ${pw:-读不到}（文档记的是 100）"; fi
     ai="$(dbq 'SELECT COUNT(*) FROM ai_config')"
     if [ "${ai:-0}" -gt 0 ] 2>/dev/null; then
-      pass "ai_config 有 $ai 行（模型 Key 已配）"
+      pass "ai_config 有 $ai 行"
+      # 检查 Key 是不是占位符 / 没填 / 明显不完整（踩过一次：库里存着 'sk-你自己的Key'）
+      keyval="$(dbq 'SELECT api_key FROM ai_config ORDER BY id LIMIT 1')"
+      keylen="$(dbq 'SELECT LENGTH(api_key) FROM ai_config ORDER BY id LIMIT 1')"
+      case "$keyval" in
+        ''|*你自己的*|*你的Key*|*填入*|*placeholder*|*xxx*|*XXX*|*your*|*YOUR*|*sk-xxx*)
+          fail "ai_config.api_key 是空/占位符（当前值：'${keyval}'）→ 群里只会回兜底文案「唔……我这会儿有点走神」"
+          ;;
+        sk-*)
+          if [ "${keylen:-0}" -ge 30 ]; then
+            pass "api_key 格式正常（sk- 开头，长度 ${keylen}）"
+          else
+            warnx "api_key 以 sk- 开头但只有 ${keylen} 个字符，可能没复制完整"
+          fi
+          ;;
+        *)
+          warnx "api_key 不以 sk- 开头（长度 ${keylen:-0}），确认是不是用别家的 Key"
+          ;;
+      esac
     else
-      warnx "ai_config 空 → 机器人只会回兜底文案（去管理页『基础设置』填 DeepSeek Key，或直接 UPDATE ai_config）"
+      warnx "ai_config 空 → 机器人只会回兜底文案（去管理页『基础设置』填 Key，或直接 UPDATE ai_config）"
     fi
   fi
 fi
