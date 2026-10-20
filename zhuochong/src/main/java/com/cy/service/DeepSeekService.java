@@ -61,6 +61,19 @@ public class DeepSeekService {
         this.restTemplate = new RestTemplate(factory);
     }
 
+    /**
+     * 视觉（多模态）模型名。以前硬编码在 chatVision 里，现在可配置：
+     * 换网关/换模型只改配置（ZC_AI_VISION_MODEL），不用重新打包。
+     * 注意：官方 api.deepseek.com 的 deepseek-chat 是纯文本模型，没有视觉能力；
+     * 要用图片识别必须指向一个真正支持 image_url 输入的模型。
+     */
+    @org.springframework.beans.factory.annotation.Value("${ai.vision-model:deepseek-v4-flash-vision-exp}")
+    private String visionModel;
+
+    private String visionModelName() {
+        return esc(visionModel, "deepseek-v4-flash-vision-exp");
+    }
+
     // 结构化返回
     public static class AiResult {
         public String boat_text;
@@ -436,11 +449,11 @@ public class DeepSeekService {
         AiConfig cfg = configs.get(0);
         if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
-        System.out.println("[视觉] 请求图片 base64 长度=" + (imageBase64 != null ? imageBase64.length() : 0)
+        System.out.println("[视觉] 模型=" + visionModelName() + "，请求图片 base64 长度=" + (imageBase64 != null ? imageBase64.length() : 0)
                 + "，提示词长度=" + (prompt != null ? prompt.length() : 0)
                 + "，max_tokens=" + maxTokens);
 
-        String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
+        String body = "{\"model\":\"" + visionModelName() + "\"," +
                 "\"max_tokens\":" + maxTokens + "," +
                 "\"messages\":[{\"role\":\"user\",\"content\":[" +
                 "{\"type\":\"text\",\"text\":" + toJsonStr(prompt) + "}," +
@@ -455,7 +468,7 @@ public class DeepSeekService {
             HttpEntity<String> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = restTemplate.postForEntity(apiUrl, entity, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                notifyUsage("vision", "deepseek-v4-flash-vision-exp", response.getBody().get("usage"));
+                notifyUsage("vision", visionModelName(), response.getBody().get("usage"));
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) response.getBody().get("choices");
                 if (choices != null && !choices.isEmpty()) {
@@ -499,7 +512,7 @@ public class DeepSeekService {
         AiConfig cfg = configs.get(0);
         if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
 
-        String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
+        String body = "{\"model\":\"" + visionModelName() + "\"," +
                 "\"max_tokens\":" + maxTokens + "," +
                 "\"messages\":[{\"role\":\"user\",\"content\":[" +
                 "{\"type\":\"text\",\"text\":" + toJsonStr(prompt) + "}," +
@@ -546,7 +559,7 @@ public class DeepSeekService {
             content.append(",{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,").append(b64).append("\"}}");
         }
         content.append("]");
-        String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
+        String body = "{\"model\":\"" + visionModelName() + "\"," +
                 "\"max_tokens\":4096," +
                 "\"messages\":[{\"role\":\"user\",\"content\":" + content + "}]}";
         String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
@@ -595,7 +608,7 @@ public class DeepSeekService {
             content.append(",{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,").append(b64).append("\"}}");
         }
         content.append("]");
-        String body = "{\"model\":\"deepseek-v4-flash-vision-exp\"," +
+        String body = "{\"model\":\"" + visionModelName() + "\"," +
                 "\"max_tokens\":4096," +
                 "\"messages\":[{\"role\":\"user\",\"content\":" + content + "}]}";
         String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
