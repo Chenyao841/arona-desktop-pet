@@ -133,7 +133,58 @@ powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -Restart
 # 本地 mvn -Pcloud package（排除 2GB 重资源）→ scp 到 /root/zc/app/zhuochong.jar → 重启 → 体检
 ```
 
-## 五、什么进仓库、什么不进
+## 五、首次上线后必须做：填模型 Key
+
+`ai_config` 表存在 ≠ 能用。`api_key` 为空时机器人**能连上 QQ 但只会回兜底文案**
+（`尚未设置API Key…` / `唔……我这会儿有点走神`），看着像"通了但不会说话"。
+
+> Key 存在数据库里（管理页「基础设置」），**不在** `/root/zc-secrets/env.qq` 里，也不用改 git。
+> `DeepSeekService` 每次调用都重新读库，所以**改完不用重启服务**。
+
+### 方式 A：直接 SQL（最快）
+
+```bash
+# 从 env 里取库密码（不必手打），查当前状态
+PW="$(grep '^ZC_DB_PASSWORD=' /root/zc-secrets/env.qq | cut -d= -f2-)"
+docker exec -e MYSQL_PWD="$PW" zc-mysql mysql -uroot -t db03 -e \
+  "SELECT id, LEFT(api_key,8) AS key_head, LENGTH(api_key) AS key_len, model, api_url FROM ai_config"
+
+# 写进去（只改 Key，别动 api_url / model）
+docker exec -e MYSQL_PWD="$PW" zc-mysql mysql -uroot db03 -e \
+  "UPDATE ai_config SET api_key='sk-你自己的Key' WHERE id=1;"
+```
+
+`api_url` 应为 `https://api.deepseek.com/v1/chat/completions`（用中转/自建网关就填自己的），
+`model` 一般 `deepseek-chat`（`deepseek-reasoner` 也行，但不支持 temperature）。
+
+### 方式 B：SSH 隧道 + 管理页（还能顺带改人设）
+
+8080 没对公网开放（安全组只开 22 ✓），本机开隧道即可：
+
+```bash
+ssh -L 8080:127.0.0.1:8080 root@47.93.180.198
+```
+
+浏览器开 `http://127.0.0.1:8080/桌宠设置.html` → 「基础设置」填 Key；同一页面能改
+`ai_prompt` 人设、`basic_info`（名字/身份）、回答规则库。登录账号见 `application.yml` 的 `login:`（默认 `老师 / 123456`）。
+
+### 验证 Key 生效
+
+群里 @ 小号说一句 → 3 秒后应有正经回复；再查日志：
+
+```bash
+journalctl -u zhuochong-qq -n 40 --no-pager | grep -E '\[AI\]|api_key|\[QQ\] 收到'
+```
+
+还看到 `[AI] api_key 为空 → 走「未设置 Key」友好提示` 就说明没填对。
+
+### 两个安全/成本提醒
+
+- **备份里含 Key**：`/root/backup/db03-*.sql.gz` 里有 `api_key`，这些文件别随手乱传；`chmod 700 /root/backup` 更稳。
+- **视觉模型**：图片理解用硬编码模型名 `deepseek-v4-flash-vision-exp`，与 `api_url`/`api_key` 同一份配置。
+  Key 若不支持该模型，图片回复会退化成描述性文字，文字聊天不受影响。
+
+## 六、什么进仓库、什么不进
 
 | 内容 | 进 GitHub？ | 说明 |
 |---|---|---|
@@ -145,7 +196,7 @@ powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -Restart
 | `target/`、`node_modules/`、`*.log`、`hs_err_pid*` | ❌ | 构建/运行产物 |
 | `.env.qq`、`notes.txt`、数据库密码、NapCat token | ❌ **绝不能进** | `.env` 没被 gitignore，所以放在仓库外 `/root/zc-secrets/` |
 
-## 六、推送前先自检（本地，不花云上资源）
+## 七、推送前先自检（本地，不花云上资源）
 
 ```powershell
 # 1) 编译 + 单测（分段器）
@@ -161,7 +212,7 @@ $env:ZC_QQ_WS_TOKEN='testtoken'; $env:ZC_QQ_SELF_ID='0'; $env:ZC_QQ_ADMIN_QQ='55
 # 看假 NapCat 窗口是否收到 send_group_msg（文字/图片/引用都对）
 ```
 
-## 七、回滚
+## 八、回滚
 
 | 场景 | 做法 | 耗时 |
 |---|---|---|
@@ -174,7 +225,7 @@ $env:ZC_QQ_WS_TOKEN='testtoken'; $env:ZC_QQ_SELF_ID='0'; $env:ZC_QQ_ADMIN_QQ='55
 所以正常发版**不需要手工跑 SQL**，回滚也不会因为表结构卡住。
 如果以后加了「改列/删列」这种破坏性变更，就在 `update.sh` 的备份之后、重启之前加一条迁移脚本并写进本文。
 
-## 八、版本号与发布纪律
+## 九、版本号与发布纪律
 
 - 语义化版本 + git tag：`v0.4.0`（P0~P1）、`v0.5.0`（P3 管理员体系）、`v0.6.0`（P4 节奏/防刷）……
   `git tag -a v0.6.0 -m "回复节奏 + 防刷 + 私聊闲聊 + 引用回复"`，push 时带 `--tags`。
@@ -182,7 +233,7 @@ $env:ZC_QQ_WS_TOKEN='testtoken'; $env:ZC_QQ_SELF_ID='0'; $env:ZC_QQ_ADMIN_QQ='55
 - **密钥永远不进仓库**：`.env.qq`、`notes.txt`、`bili_cookie`、`api_key` 只在服务器 `/root/zc-secrets/`。
 - 只在服务器上跑 `update.sh`，**不在服务器上手改代码**（`update.sh` 用 `reset --hard`，手改会被覆盖）。
 
-## 九、常见问题
+## 十、常见问题
 
 | 现象 | 原因 / 处理 |
 |---|---|
