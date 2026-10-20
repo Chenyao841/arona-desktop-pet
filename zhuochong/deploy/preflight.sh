@@ -58,9 +58,19 @@ if command -v java >/dev/null 2>&1; then
 else
   fail "没有 java（apt install openjdk-17-jdk）"
 fi
-if command -v mvn >/dev/null 2>&1; then pass "mvn 已装（$(mvn -v 2>/dev/null | head -1)）"
-elif [ -x "$PROJ_DIR/mvnw" ]; then warnx "没有 mvn，但可用 ./mvnw（首次会自行下载 Maven，需要网络）"
-else fail "既没有 mvn 也没有 mvnw"; fi
+if command -v mvn >/dev/null 2>&1; then
+  mvnver="$(mvn -v 2>/dev/null | head -1 | sed -n 's/.*Apache Maven \([0-9.]*\).*/\1/p')"
+  mmajor="$(echo "${mvnver:-0}" | cut -d. -f2)"
+  if [ "${mmajor:-0}" -ge 8 ] 2>/dev/null; then
+    pass "mvn 已装（$mvnver）"
+  else
+    warnx "系统 mvn 是 ${mvnver:-未知}，偏老（Spring Boot 4.x 建议 3.8+）→ 部署会自动优先用 ./mvnw（固定 3.9.16）"
+  fi
+elif [ -f "$PROJ_DIR/mvnw" ]; then
+  warnx "没有系统 mvn，但会用 ./mvnw（固定 Maven 3.9.16，首次需联网下载约 10MB）"
+else
+  fail "既没有 mvn 也没有 mvnw"
+fi
 if [ "$(cat /etc/timezone 2>/dev/null || echo '?')" = "Asia/Shanghai" ]; then pass "时区 Asia/Shanghai"
 else warnx "时区不是 Asia/Shanghai（当前：$(cat /etc/timezone 2>/dev/null || echo 未知)）→ timedatectl set-timezone Asia/Shanghai"; fi
 
@@ -82,11 +92,24 @@ if container_up "$MYSQL_CONTAINER"; then
   cv="$(dbq 'SELECT COUNT(*) FROM conversation')"
   cl="$(dbq 'SELECT COUNT(*) FROM command_lib')"
   pw="$(dbq 'SELECT COUNT(*) FROM pictionary_word')"
-  if [ "${cv:-x}" = "43" ]; then pass "conversation = 43"; else warnx "conversation = ${cv:-读不到}（文档记的是 43）"; fi
-  if [ "${cl:-x}" = "64" ]; then pass "command_lib = 64"; else warnx "command_lib = ${cl:-读不到}（文档记的是 64）"; fi
-  if [ "${pw:-x}" = "100" ]; then pass "pictionary_word = 100"; else warnx "pictionary_word = ${pw:-读不到}（文档记的是 100）"; fi
-  ai="$(dbq 'SELECT COUNT(*) FROM ai_config')"
-  [ "${ai:-0}" -gt 0 ] 2>/dev/null && pass "ai_config 有 $(dbq 'SELECT COUNT(*) FROM ai_config') 行" || warnx "ai_config 空（没配模型 Key 的话机器人只会回兜底文案）"
+  # 三个都读不到时，最可能是库密码没配/不对（不是数据丢了）
+  if [ -z "$cv" ] && [ -z "$cl" ] && [ -z "$pw" ]; then
+    if [ -z "${ZC_DB_PASSWORD:-}" ]; then
+      fail "MySQL 查询全部失败：ZC_DB_PASSWORD 为空 → 先建 $ENV_FILE 填数据库密码"
+    else
+      fail "MySQL 查询全部失败：检查 ZC_DB_PASSWORD / ZC_DB_USER / ZC_DB_NAME（容器里 root 改过密码？）"
+    fi
+  else
+    if [ "${cv:-x}" = "43" ]; then pass "conversation = 43"; else warnx "conversation = ${cv:-读不到}（文档记的是 43）"; fi
+    if [ "${cl:-x}" = "64" ]; then pass "command_lib = 64"; else warnx "command_lib = ${cl:-读不到}（文档记的是 64）"; fi
+    if [ "${pw:-x}" = "100" ]; then pass "pictionary_word = 100"; else warnx "pictionary_word = ${pw:-读不到}（文档记的是 100）"; fi
+    ai="$(dbq 'SELECT COUNT(*) FROM ai_config')"
+    if [ "${ai:-0}" -gt 0 ] 2>/dev/null; then
+      pass "ai_config 有 $ai 行（模型 Key 已配）"
+    else
+      warnx "ai_config 空 → 机器人只会回兜底文案（去管理页『基础设置』填 DeepSeek Key，或直接 UPDATE ai_config）"
+    fi
+  fi
 fi
 
 # NapCat 正向 WS：GET 应返回 426

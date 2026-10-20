@@ -78,14 +78,19 @@ fi
 
 # ---------- 4) 构建 ----------
 cd "$PROJ_DIR" || die "进不去 $PROJ_DIR"
-if command -v mvn >/dev/null 2>&1; then
+# 优先用项目自带的 mvnw：它固定 Maven 3.9.16（.mvn/wrapper 里写着），
+# 而 apt 装的 mvn 可能是 3.6.x —— 太老，Spring Boot 4.x 会拒绝构建。
+if [ -n "${ZC_MVN:-}" ]; then
+  MVN="$ZC_MVN"
+elif [ -f ./mvnw ]; then
+  chmod +x ./mvnw 2>/dev/null || true
+  MVN=./mvnw
+elif command -v mvn >/dev/null 2>&1; then
   MVN=mvn
 else
-  MVN=./mvnw
-  [ -x "$MVN" ] || die "既没有 mvn 也没有可执行的 mvnw"
-  chmod +x ./mvnw 2>/dev/null || true
+  die "既没有 ./mvnw 也没有 mvn"
 fi
-log "构建中（$MVN -DskipTests package）..."
+log "构建中（$MVN -DskipTests package，Maven wrapper 固定 3.9.16）..."
 BUILT_JAR="$PROJ_DIR/target/zhuochong-0.0.1-SNAPSHOT.jar"
 rm -f "$BUILT_JAR"
 if ! "$MVN" -B -DskipTests package -Dmaven.test.skip=true; then
