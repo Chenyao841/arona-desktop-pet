@@ -266,7 +266,7 @@ zhuochong-electron/
   - `netease.node` / `netease.app` / `netease.auto-start` → 网易云 API（`D:\NeteaseCloudMusicApi\app.js`）
   - `bili.room-id=4198805` → 弹幕默认房间（实际以 `ai_config.room_id` 为准）
 - `application.properties`：仅 `spring.application.name`。
-- **数据库连接不在 yml，而在 `config/MyBatisConfig.java:20`**：`jdbc:mysql://localhost:3306/db03`，root / CHANGE_ME_DB_PASSWORD。
+- **数据库连接不在 yml，而在 `config/MyBatisConfig.java:20`**：`jdbc:mysql://localhost:3306/db03`，root / chenyao841。
 - `pom.xml`：Spring Boot `4.1.0` parent，依赖 webmvc / mybatis-spring-boot-starter 3.0.3 / mysql-connector-j / lombok / jjwt 0.12.5 / jackson / brotli-dec。**无 devtools（无热重载）**。
 
 ### 5.2 构建 / 运行

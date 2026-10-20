@@ -1,31 +1,71 @@
 @echo off
 REM ============================================================
-REM  ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Í¹ï¿½ï¿½ï¿½
-REM  ï¿½Ã·ï¿½ï¿½ï¿½Ë«ï¿½ï¿½ Ò»ï¿½ï¿½ï¿½ï¿½ï¿½.bat / ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½.bat Ê±ï¿½ï¿½ï¿½Ô¶ï¿½ call ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
-REM        Ò²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ call Ò»ï¿½Î£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë£ï¿½IDEA ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä»ï¿½
-REM        ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½Öµï¿½îµ½ application.yml ï¿½ï¿½ zc.db.* ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï£©ï¿½ï¿½
-REM  ×¢ï¿½â£ºï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ë±£ï¿½ï¿½Îª GBK/ANSI + CRLFï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ë¡£
+REM  °¢ÂÞÄÈ×À³è ¡¤ »·¾³±äÁ¿ÅäÖÃ£¨¸ÄÕâÒ»´¦¾Í¹»£©
+REM  ÓÃ·¨£ºË«»÷ Ò»¼üÆô¶¯.bat / Æô¶¯ºó¶Ë.bat Ê±»á×Ô¶¯ call ±¾ÎÄ¼þ£»
+REM        Ò²¿ÉÒÔÔÚÃüÁîÐÐÀïÏÈ call Ò»´Î£¬ÔÙ×ÔÐÐÆô¶¯ºó¶Ë£¨IDEA ÀïÆô¶¯µÄ»°
+REM        Çë°ÑÍ¬ÑùµÄÖµÌîµ½ application.yml µÄ zc.db.* »òÏµÍ³»·¾³±äÁ¿Àï£©¡£
+REM  ×¢Òâ£º±¾ÎÄ¼þ±ØÐë±£´æÎª GBK/ANSI + CRLF£¬·ñÔòÖÐÎÄ»áÂÒÂë¡£
 REM ============================================================
 
-REM ---------- ï¿½ï¿½ï¿½Ý¿â£¨ï¿½Ø¸Ä£ï¿½----------
+REM ---------- Êý¾Ý¿â£¨±Ø¸Ä£©----------
 set ZC_DB_HOST=127.0.0.1
 set ZC_DB_PORT=3306
 set ZC_DB_NAME=db03
 set ZC_DB_USER=root
-set ZC_DB_PASSWORD=CHANGE_ME_DB_PASSWORD
+set ZC_DB_PASSWORD=chenyao841
 
-REM ---------- ï¿½ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½Ã²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ£ï¿½----------
-REM GPT-SoVITS ï¿½ï¿½ python.exe ï¿½ï¿½ï¿½ä¹¤ï¿½ï¿½Ä¿Â¼ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½
-set ZC_PYTHON=PUT_YOUR_PATH_HERE
-set ZC_TTS_DIR=PUT_YOUR_PATH_HERE
+REM ---------- ±¾µØ¹¤¾ßÂ·¾¶£¨¿ÉÑ¡£¬ÓÃ²»µ½¾ÍÁô¿Õ£©----------
+REM GPT-SoVITS µÄ python.exe ÓëÆä¹¤×÷Ä¿Â¼£¨ÒªÓïÒô²ÅÐèÒª£©
+set ZC_PYTHON=D:\BaiduNetdiskDownload\GPT-SoVITS\GPT-SoVITS-v2pro-20250604\GPT-SoVITS-v2pro-20250604\runtime\python.exe
+set ZC_TTS_DIR=D:\BaiduNetdiskDownload\GPT-SoVITS\GPT-SoVITS-v2pro-20250604\GPT-SoVITS-v2pro-20250604
 set ZC_TTS_AUTOSTART=true
 
-REM ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ APIï¿½ï¿½Òªï¿½Å¸ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½node.exe ï¿½ï¿½ app.jsï¿½ï¿½
-set ZC_NODE=ç”¨æˆ·ç›®å½•\YOUR_NAME\scoop\apps\nodejs\current\node.exe
+REM ÍøÒ×ÔÆÒôÀÖ API£¨Òª·Å¸è²ÅÐèÒª£ºnode.exe Óë app.js£©
+set ZC_NODE=C:\Users\³Âê×\scoop\apps\nodejs\current\node.exe
 set ZC_NETEASE_APP=D:\NeteaseCloudMusicApi\app.js
 set ZC_NETEASE_AUTOSTART=true
 
-REM ---------- BÕ¾Ö±ï¿½ï¿½ï¿½ä£¨Òªï¿½ï¿½Ä»ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½----------
+REM ---------- BÕ¾Ö±²¥¼ä£¨Òªµ¯Ä»²ÅÐèÒª£©----------
 set ZC_BILI_ROOM_ID=4198805
+
+REM ---------- QQ »úÆ÷ÈË£¨NapCat ÕýÏò WS / OneBot 11£»²»ÓÃ¾Í±£³Ö ZC_QQ_ENABLED=false£©----------
+REM ÔÆ¶Ë NapCat µÄ 3001 ÕýÏò WS ÒÑ¿ª£»token ¼û·þÎñÆ÷ ~/notes.txt£¨±¾µØ²âÊÔÌî NapCat WebUI ÀïÅäµÄ token£©
+set ZC_QQ_ENABLED=false
+set ZC_QQ_WS_URL=ws://127.0.0.1:3001
+set ZC_QQ_WS_TOKEN=
+set ZC_QQ_SELF_ID=0
+REM Ö»Àí @ ×Ô¼º£»Í¬Ò»ÈË 60s Ö»»ØÒ»´Î£»Èº°×Ãûµ¥Áô¿Õ=²»ÏÞ£¨Ïë¸ü°²È«¾ÍÌî²âÊÔÈººÅ£¬¶ººÅ·Ö¸ô£©
+set ZC_QQ_TRIGGER_MODE=at
+set ZC_QQ_USER_COOLDOWN=60
+set ZC_QQ_GROUP_WHITELIST=
+REM P1£º±íÇé°ü / ¿´Í¼£¨ËØ²ÄÔÚ src\main\resources\static\qq_emoji\£¬±ê×¢¼û emoji_map.json£©
+set ZC_QQ_EMOJI=true
+REM ±íÇé°ü£ºÖÐ¼äÖÁÉÙ¸ô¼¸Ìõ»Ø¸´²ÅÔÊÐíÔÙ·¢Ò»ÕÅ£¨Ä¬ÈÏ 5£»0=²»ÏÞ¼ä¸ô£©
+set ZC_QQ_EMOJI_GAP=5
+REM ÄÄÐ©ÇéÐ÷Ëã¡¸ÇéÐ÷±ä»¯½Ï´ó¡¹£¨¶ººÅ·Ö¸ô£©£¬²»ÔÚ¼¯ºÏÀïµÄÇéÐ÷²»·¢±íÇé
+set ZC_QQ_EMOJI_STRONG=¼¤¶¯,º¦Ðß,ÉúÆø,»ÅÕÅ,ÄÑ¹ý,¿ªÐÄ,Õð¾ª,ÇÎÆ¤
+set ZC_QQ_VISION=true
+REM ---------- P3£º¹ÜÀíÔ± / ¼ÇÒä¸ôÀë / ¶î¶È ----------
+REM ¹ÜÀíÔ± QQ£¨¶ººÅ·Ö¸ô£©£ºÖ»ÓÐÕâÐ©ÈËÄÜË½ÁÄ»úÆ÷ÈË¡¢ÄÜÓÃ /status /groups /usage µÈ¹ÜÀíÖ¸Áî
+set ZC_QQ_ADMIN_QQ=
+REM Ë½ÁÄÖ»½Ó´ý¹ÜÀíÔ±£¨true£»¸Ä³É false ¾ÍË­Ë½ÁÄ¶¼»Ø£¬²»ÍÆ¼ö£©
+set ZC_QQ_ADMIN_ONLY_PRIVATE=true
+REM ¼ÇÒä¸ôÀë£ºgroup£¨Ã¿ÈºÒ»·Ý£©/ user£¨Ã¿ÈºÃ¿ÈËÒ»·Ý£©/ off£¨Óë×À³è¹²ÓÃ£¬²»ÍÆ¼ö£©
+set ZC_QQ_MEMORY_SCOPE=group
+REM Ã¿ N ÌõÈºÏûÏ¢ºóÌ¨ÌáÁ¶Ò»´Î³¤ÆÚ¼ÇÒä£¨0=²»×Ô¶¯ÌáÁ¶£©
+set ZC_QQ_MEMORY_EVERY=20
+REM Ã¿ÈÕ token ÉÏÏÞ£¨0=²»ÏÞ£»Ö»Í³¼Æ QQ Èº£¬²»º¬×À³è¶Ë£©
+set ZC_QQ_DAILY_TOKENS=0
+REM ---------- P4£º»Ø¸´½Ú×à / ¶ñÒâ@·À»¤ / ÒýÓÃ»Ø¸´ ----------
+REM ÊÕµ½ @ ºóÖÁÉÙµÈ¼¸ÃëÔÙ»Ø£¨ÏëµÃ¿ìÒ²²»ÌáÇ°Ëµ£»0=Á¢¿Ì»Ø£©
+set ZC_QQ_REPLY_DELAY=3
+REM ÑÓ³Ù´°¿ÚÄÚÍ¬Ò»ÈËÁ¬Ðø @ µ½Õâ¸ö´ÎÊý¾ÍÀ­ºÚ£¨Ö»ÓÐ¹ÜÀíÔ±ÄÜ /unban£©
+set ZC_QQ_BLACKLIST_BURST=4
+REM ÒýÓÃ»Ø¸´£¨»Ø¸´´ø"»Ø¸´ XX£º¡­"ÒýÓÃ¿ò£©
+set ZC_QQ_QUOTE=true
+REM ¶î¶ÈÓÃ¾¡Ê±¶Ô±» @ µÄ¹Ì¶¨ËµÃ÷
+set ZC_QQ_QUOTA_REPLY=½ñÌìÎÒËµ»°Ì«¶àÀ²£¬¶î¶ÈÓÃÍêÁË¡­¡­¹ÜÀíÔ±³äÖµºóÎÒ¾Í»ØÀ´¡«
+REM Í¬Ê±ÔÊÐí¼¸ÌõÏûÏ¢ÔÚË¼¿¼
+set ZC_QQ_AI_THREADS=4
 
 exit /b 0

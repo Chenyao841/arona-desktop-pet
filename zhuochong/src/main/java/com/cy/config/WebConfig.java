@@ -71,7 +71,9 @@ public class WebConfig implements WebMvcConfigurer {
                         "/seed-game-expressions",
                         "/ai/**",
                         "/error",
-                        "/favicon.ico"
+                        "/favicon.ico",
+                        // QQ 机器人自检：运维/告警脚本直接 curl，不带登录态（不含敏感值）
+                        "/qq/status"
                 );
     }
 }

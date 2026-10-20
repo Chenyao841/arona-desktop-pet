@@ -21,7 +21,7 @@ import javax.sql.DataSource;
  *     ZC_DB_HOST / ZC_DB_PORT / ZC_DB_NAME / ZC_DB_USER / ZC_DB_PASSWORD
  */
 @Configuration
-@MapperScan("com.cy.mapper")
+@MapperScan({"com.cy.mapper", "com.cy.qq"}) // com.cy.qq：QQ 机器人自己的表（token 用量），模块内自带 mapper 更内聚
 public class MyBatisConfig {
 
     @Value("${zc.db.host:}")

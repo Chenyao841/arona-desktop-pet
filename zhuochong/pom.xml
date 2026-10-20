@@ -136,4 +136,41 @@
         </plugins>
     </build>
 
+    <profiles>
+        <!--
+          云端（QQ 机器人）打包：把桌宠专属的重资源排除掉。
+          仓库根 .gitignore 本来就不跟踪这些目录，所以「在服务器上 git clone 后构建」天然是小 jar；
+          这个 profile 是给「本地构建再上传」用的 —— 否则本地 static 有近 2 GB，打出来的 jar 没法传。
+
+          用法：mvn -Pcloud -DskipTests package
+          产物：target/zhuochong-0.0.1-SNAPSHOT.jar（约 40 MB，含 qq_emoji 表情包）
+        -->
+        <profile>
+            <id>cloud</id>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <exclude>static/GPT_weights_v2/**</exclude>
+                            <exclude>static/SoVITS_weights_v2/**</exclude>
+                            <exclude>static/live2d/**</exclude>
+                            <exclude>static/background/**</exclude>
+                            <exclude>static/aluona/**</exclude>
+                            <exclude>static/bottom/**</exclude>
+                            <exclude>static/soundeffects/**</exclude>
+                            <exclude>static/参考音频/**</exclude>
+                            <exclude>static/麻将参考截屏/**</exclude>
+                            <exclude>static/麻将错题截屏/**</exclude>
+                            <exclude>static/标注图片/**</exclude>
+                            <exclude>static/motions/**</exclude>
+                            <exclude>static/effects/**</exclude>
+                            <exclude>static/music/**</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

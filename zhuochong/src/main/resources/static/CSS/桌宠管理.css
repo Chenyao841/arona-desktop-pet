@@ -1,0 +1,661 @@
+/* ====== 桌宠管理 样式表 ====== */
+
+/* 页面基础：全屏、底色，用 flex 把对话框推到底部 */
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: url(../background/beijing.png) no-repeat center center / cover;
+    /*
+     * background 拆解：
+     *   url(...)       — 图片路径（../ 返回上级 static/ 再进 background/）
+     *   no-repeat      — 不平铺
+     *   center center  — 水平垂直居中
+     *   / cover        — 等比缩放填满容器，不留白
+     */
+}
+
+/*
+ * .pet-container — 桌宠图片容器
+ *   position: fixed  — 脱离文档流，不受对话框 flex 布局影响
+ *   top / bottom     — 上下间距锁定，图片高度自然等于剩余空间
+ *   right            — 右侧间距
+ *   不设 left        — 宽度由图片自适应
+ */
+.pet-container {
+    position: fixed;
+    top: 40px;
+    bottom: 0;
+    right: 10px;
+    z-index: 4;
+}
+
+.pet-container img {
+    height: 100%;
+    width: auto;
+}
+
+/* 音效视频 — 浮于桌宠图片左上角 */
+.effect-video {
+    position: absolute;
+    top: -4%;
+    right: -60%;
+    width: 1000px;
+    height: auto;
+    pointer-events: none;
+    z-index: 6;
+    background: transparent !important;
+}
+
+/*
+ * .dialog-box — 对话框整体容器
+ *   background: rgba(R, G, B, A)  — A=0.6 表示60%不透明（即40%透明）
+ *   border-radius                  — 圆角
+ */
+.dialog-box {
+    background: rgba(0, 0, 0, 0.85);
+    padding: 16px 270px 50px 220px;
+    color: #fff;
+    font-size: 18px;
+    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+    font-weight: 700;            /* 700=bold，900=最粗，按需调整 */
+    position: relative;
+    z-index: 5;
+}
+
+/*
+ * .dialog-arrow — 右下角倒三角（CSS 边框画法）
+ *   原理：元素宽高为 0 时，border 各占一个三角形。
+ *   给 border-top 上色，其余透明 → 尖端朝下的三角
+ */
+.dialog-arrow {
+    position: absolute;       /* 相对 .dialog-box 定位 */
+    bottom: 16px;            /* 超出对话框底部 */
+    right: 240px;              /* 距离右边 */
+    width: 0;
+    height: 0;
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-top: 16px solid #5BEEFD;   /* 上边填充颜色 → 尖端朝下 */
+}
+
+/*
+ * .dialog-info — 上半部分：名字 + 身份
+ *   display: flex                  — 弹性布局，子元素横向排列
+ *   justify-content: space-between — 两端对齐（名字靠左，身份靠右）
+ */
+.dialog-info {
+    display: flex;
+    justify-content: flex-start;  /* 元素左侧靠齐 */
+    align-items: flex-end;      /* 底部对齐：不同字号的元素底线一致 */
+    gap: 20px;
+    margin-bottom: 12px;
+}
+
+/*
+ * .dialog-name  — 角色名字
+ * .dialog-role  — 角色身份
+ *   font-weight: bold — 加粗
+ */
+.dialog-name {
+    font-weight: bold;
+    font-size: 30px;
+}
+
+.dialog-role {
+    color:#7ACBF6;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+/*
+ * .dialog-divider — 上下分隔线
+ *   <hr> 标签默认有自带样式，这里重写为白色细线
+ *   border  — 边框（替代默认的灰色线）
+ *   margin  — 上下间距
+ */
+.dialog-divider {
+    border: none;
+    border-top: 2px solid rgba(255, 255, 255, 0.3);
+    margin: 10px 0;
+}
+
+/*
+ * .dialog-text — 下半部分：对话文本
+ *   line-height — 行高，让多行文本不拥挤
+ */
+.dialog-text {
+    line-height: 1.6;
+    font-size: 26px;
+    font-weight: 500;
+    min-height: 3.2em;
+    white-space: pre-line;
+}
+
+/* 对话输入框 — 与 dialog-text 样式统一 */
+.talk-input {
+    line-height: 1.6;
+    font-size: 26px;
+    font-weight: 500;
+    min-height: 3.2em;
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    resize: none;
+    font-family: inherit;
+}
+
+/*
+ * .dialog-clickable — 可点击状态（有选项可展开时 JS 动态添加此类）
+ *   cursor: pointer  — 鼠标悬浮变成手指
+ *   .dialog-arrow 动画 — 三角轻微上下弹跳，吸引注意
+ */
+.dialog-clickable {
+    cursor: pointer;            /* 仅控制鼠标手势，文本样式复用 .dialog-text */
+}
+
+.dialog-clickable .dialog-arrow {
+    animation: bounce 0.8s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); }
+}
+
+@keyframes petBounce {
+    0%, 100% { transform: translateY(0); }
+    30%      { transform: translateY(-40px); }
+    60%      { transform: translateY(-10px); }
+}
+.pet-bounce {
+    animation: petBounce 0.2s linear;
+}
+
+@keyframes petDrop {
+    0%   { transform: translateY(0); }
+    40%  { transform: translateY(40px); }
+    70%  { transform: translateY(-10px); }
+    100% { transform: translateY(0); }
+}
+.pet-drop {
+    animation: petDrop 0.4s ease-in-out;
+}
+
+@keyframes petSwing {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-15px); }
+    75%      { transform: translateX(15px); }
+}
+.pet-swing {
+    animation: petSwing 0.5s ease-in-out;
+}
+
+@keyframes petSpin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.pet-spin {
+    animation: petSpin 0.6s ease-in-out;
+}
+
+@keyframes petSpin2 {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(720deg); }
+}
+.pet-spin2 {
+    animation: petSpin2 1.0s ease-in-out;
+}
+
+@keyframes petSpin3 {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(1080deg); }
+}
+.pet-spin3 {
+    animation: petSpin3 1.4s ease-in-out;
+}
+
+/* tilt: 歪头 → 绕底部中心向左倾斜再弹回 */
+@keyframes petTilt {
+    0%   { transform: rotate(0deg); }
+    30%  { transform: rotate(-24deg); }
+    60%  { transform: rotate(-24deg); }
+    90%  { transform: rotate(0deg); }
+    100% { transform: rotate(0deg); }
+}
+.pet-tilt {
+    animation: petTilt 2.8s ease-out;
+    transform-origin: bottom center;
+}
+
+/* escape: 害羞逃跑 → 慢速右挪 → 快速左冲离屏 → 数秒后从下方升回 */
+@keyframes petEscape {
+    0%    { transform: translate(0, 0); opacity: 1; }
+    8%    { transform: translate(30px, -5px); opacity: 1; }   /* 右挪一小段 */
+    40%   { transform: translate(-120vw, 10px); opacity: 0.3; } /* 快速左冲离屏 */
+    75%   { transform: translate(-120vw, 80px); opacity: 0; }   /* 躲起来 */
+    80%   { transform: translate(-120vw, 800px); opacity: 0; }
+    90%   { transform: translate(0, 800px); opacity: 0.6; }      /* 移到原位下方 */
+    100%  { transform: translate(0, 0); opacity: 1; }            /* 升回原位 */
+}
+.pet-escape {
+    animation: petEscape 4.5s ease-in-out;
+    will-change: transform, opacity;
+    /* 间距调整: 30px(右挪距离) 120vw(左冲距离) 800px(下方距离) 4.5s(总时长) */
+}
+
+/*
+ * .choices-wrapper — 占满对话框上方剩余空间，内部垂直居中
+ *   flex: 1 — 吃掉 body 除去对话框后的全部高度
+ */
+.choices-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    position: relative;     /* 使 z-index 生效 */
+    z-index: 5;             /* 高于页面普通元素，低于弹窗 */
+}
+
+/*
+ * .choices-container — 选项按钮外层
+ *   margin-left/right — 左右间距控制宽度
+ *   flex-direction: column + gap — 纵向排列，按钮间距
+ */
+.choices-container {
+    margin: 0 160px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;        /* 子元素不拉伸，仅占内容宽度 */
+    gap: 10px;
+}
+
+/*
+ * .choice-btn — 单个选项按钮
+ *   background        — 以 xuanxiang.png 为底图，100% 填满
+ *   text-align: center — 文本居中
+ */
+.choice-btn {
+    background: url(../background/xuanxiang.png) no-repeat center center / 100% 110%;
+    /* / 高度撑到110% */
+    color: #3a3a3a;
+    font-size: 24px;
+    font-weight: 500;
+    text-align: center;
+    padding: 18px 0;
+    width: 1000px;               /* 固定按钮宽度，背景图 75% = 450px */
+    text-shadow: 0 1px 0 rgba(255,255,255,0.3);   /* 字底微光 → 嵌入感 */
+    cursor: pointer;
+    transition: transform 0.15s ease;   /* 0.15秒平滑过渡 */
+}
+/*鼠标悬浮按钮变大*/
+.choice-btn:hover {
+    transform: scale(1.1);
+}
+
+.history-panel {
+    position: absolute;
+    top: 50px;
+    left: 40px;
+    right: 396px;
+    bottom: 175px;
+    /* 背景拆分为独立属性，方便单独调整各方间距 */
+    background-image: url(../background/login_beijing.png);
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: 110% 175%;       /* 单独控制背景尺寸 */
+    padding: 110px 115px 88px 85px;                    /* 单独控制内容与边框间距 */
+    display: flex;
+    flex-direction: column;
+    z-index: 3;
+}
+
+/* 面板顶部按钮行 — 绝对定位，不影响表格布局 */
+.panel-buttons {
+    position: absolute;     /* 脱离文档流，不挤占表格空间 */
+    top: 63px;
+    height: 35px;
+    left: 85px;
+    right: 130px;
+    display: flex;
+    align-items: center;    /* 按钮纵向居中 */
+    gap: 16px;
+    border: 8px solid #1a1a2e;
+    padding-bottom: 5px;
+}
+
+.panel-title {
+    flex: 1;                    /* 占满中间剩余空间 */
+    text-align: center;         /* 文字居中 */
+    color: #fff;
+    font-size: 25px;
+    font-weight: bold;
+}
+
+.btn-add, .btn-close, .btn-choice, .btn-delete, .btn-complete,.btn-back {
+    width: 140px;
+    height: 60px;
+    font-size: 22px;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease;
+}
+/*鼠标悬浮按钮变大*/
+.btn-add:hover {
+    transform: scale(1.1);
+    color: white;
+}
+.btn-close:hover {
+    transform: scale(1.1);
+    color: white;
+}
+.btn-choice:hover {
+    transform: scale(1.1);
+    color: white;
+}
+.btn-delete:hover {
+    transform: scale(1.1);
+    color: white;
+}
+.btn-complete:hover {
+    transform: scale(1.1);
+    color: white;
+}
+.btn-back:hover {
+    transform: scale(1.1);
+    color: white;
+}
+
+
+.btn-add {
+    background: url(../bottom/bottom4.png) no-repeat center center / contain;
+    color: #000000;
+}
+
+.btn-close {
+    background: url(../bottom/bottom2.png) no-repeat center center / contain;
+    color: #000000;
+}
+.btn-choice {
+    background: url(../bottom/bottom3.png) no-repeat center center / contain;
+    color: #000000;
+}
+.btn-delete {
+    background: url(../bottom/bottom1.png) no-repeat center center / contain;
+    color: #000000;
+}
+.btn-complete {
+    background: url(../bottom/bottom4.png) no-repeat center center / contain;
+    color: #000000;
+}
+.btn-back {
+    background: url(../bottom/bottom3.png) no-repeat center center / contain;
+    color: #000000;
+}
+
+/*
+ * .dialog-data — 对话历史表格
+ *   border-collapse: collapse — 合并相邻单元格边框为单线
+ */
+.dialog-data {
+    width: 100%;
+    table-layout: fixed;        /* 锁列宽，不受内容/显隐影响 */
+    border-collapse: separate;
+    border-spacing: 0;
+    border-left: 4px solid #000;
+    border-right: 4px solid #000;
+    color: #000000;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.dialog-data th,
+.dialog-data td {
+    border-right: 4px solid #000;
+    border-bottom: 4px solid #000;
+    padding: 12px 16px;
+    text-align: center;
+    line-height: 1.4;           /* 固定行高，表头不异常撑大 */
+}
+
+/* 表情列图片容器 */
+.motion-cell {
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 表情列去上下内边距，最大化图片空间 */
+.dialog-data td:nth-child(5) {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.motion-cell img {
+    height: 100%;               /* 高度填满容器 */
+    width: auto;                /* 宽度自适应，保持原比例 */
+    object-fit: contain;
+}
+
+/* 操作列按钮多行，缩上边距 */
+.dialog-data td:last-child {
+    padding-top: 0;
+    padding-bottom: 4px;
+}
+
+.dialog-data th:first-child,
+.dialog-data td:first-child {
+    border-left: 4px solid #000;  /* 第一列补左边 */
+}
+
+.dialog-data thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.dialog-data thead th {
+    background: #d4e6f1;
+    border-top: 4px solid #000;   /* 上边框画在 th 上，随表头粘住 */
+}
+
+.dialog-data th {
+    font-weight: bold;
+}
+.dialog-data th:nth-child(1), .dialog-data td:nth-child(1) { width: 4%; }
+.dialog-data th:nth-child(2), .dialog-data td:nth-child(2) { width: 18%; }
+.dialog-data th:nth-child(3), .dialog-data td:nth-child(3) { width: 20%; }
+.dialog-data th:nth-child(4), .dialog-data td:nth-child(4) { width: 28%; }
+.dialog-data th:nth-child(5), .dialog-data td:nth-child(5) { width: 6%; }
+.dialog-data th:nth-child(6), .dialog-data td:nth-child(6) { width: 24%; }
+
+/* 表格滚动容器 — 表头固定，表体滚动 */
+.table-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    border-bottom: 4px solid #000;  /* 底框在容器上，始终遮盖内容 */
+}
+
+/* 表内按钮 — 缩小适配单元格 */
+.dialog-data .btn-choice {
+    display: flex;
+    width: 140px;
+    height: 45px;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.dialog-data .btn-add,
+.dialog-data .btn-delete,
+.dialog-data .btn-close,
+.dialog-data .btn-complete {
+    display: inline-flex;
+    width: 100px;
+    height: 50px;
+    font-size: 16px;
+    margin-left: 10px;
+}
+
+.btn-row {
+    display: flex;
+    align-items: flex-start;
+    line-height: 1;
+}
+
+.edit-input {
+    font-size: 14px;
+    font-weight: bold;
+    color: #000;
+    background: #fff;
+    border: 2px solid #000;
+    padding: 4px 8px;
+    box-sizing: border-box;
+}
+
+.motion-cell img {
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+    cursor: default;
+}
+
+.motion-select-float {
+    font-size: 13px;
+    color: #000;
+    background: #fff;
+    border: 2px solid #000;
+    padding: 2px 4px;
+}
+.btn-row + .btn-row {
+    margin-top: 4px;
+}
+
+/* ===== 表情选择弹出容器 ===== */
+.motion-popup {
+    display: none;
+    position: absolute;
+    top: 414px;
+    left: 653px;
+    transform: translate(-50%, -50%);
+    width: 1008px;
+    height: 468px;
+    background: transparent;
+    border: solid #000;
+    border-width: 3px 8px 3px 8px;
+    z-index: 300;
+    padding: 16px;
+}
+.motion-popup.show {
+    display: flex;
+    flex-direction: row;
+}
+
+/* 加载过渡图片 — 调位置大小改下面四行 */
+.loading-img {
+    position: absolute;
+    top: 416px;                   /* 垂直位置 */
+    left: 652px;                  /* 水平位置 */
+    transform: translate(-50%, -50%);
+    width: 1040px;               /* 宽度 */
+    height: 494px;               /* 高度自适应 */
+    z-index: 400;
+    opacity: 0.3;                 /* 透明度，1=不透明，0=全透明 */
+}
+
+.motion-popup-left {
+    width: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.motion-popup-left img {
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+}
+
+.motion-popup-right {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    position: relative;
+}
+.motion-popup-right label {
+    font-size: 20px;
+    font-weight: bold;
+    color: #000;
+}
+.motion-popup-right select {
+    font-size: 18px;
+    padding: 4px 8px;
+    width: 100%;
+}
+.motion-popup-right input {
+    font-size: 18px;
+    padding: 4px 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.motion-popup-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* ===== 表切换栏：标题绝对居中（切换表时位置不变），← → 紧贴标题两侧（间隔约一个字宽） =====
+   注意：HTML 里也写了同样的内联样式，避免 CSS 被浏览器缓存时布局跑偏 */
+.panel-nav {
+    position: absolute;         /* 脱离 flex 流：左右还有多少按钮都不影响标题中心 */
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 26px;                  /* 箭头与标题间距 ≈ 一个 25px 字的宽度 */
+}
+.panel-nav .panel-title {
+    flex: none;                 /* 不要 flex:1，宽度按下面的固定占位 */
+    white-space: nowrap;
+    width: 9em;                 /* 固定占位 = 最长标题「对话功能模块数据表」9 个字（1em/字）；
+                                   JS 启动时会按实际字体渲染宽度再精确校正一次 */
+    text-align: center;         /* 短标题在自己那一格里居中 → ← → 位置始终不变 */
+    overflow: visible;          /* 万一比 9em 略宽，也只是文字居中溢出，不挤动箭头 */
+}
+.btn-nav {
+    width: 52px;
+    height: 52px;
+    font-size: 26px;
+    font-weight: bold;
+    line-height: 1;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(122, 203, 246, 0.18);
+    color: #7ACBF6;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+.btn-nav:hover {
+    transform: scale(1.12);
+    background: rgba(122, 203, 246, 0.32);
+    color: #ffffff;
+}

@@ -1,0 +1,45 @@
+# ============================================================
+# 阿罗娜后端 + QQ 机器人常驻（阿里云 Ubuntu）
+#
+# 安装（首次部署，路径按 GitHub 仓库布局）：
+#   sudo cp /root/arona/zhuochong/deploy/zhuochong-qq.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable zhuochong-qq
+#   bash /root/arona/zhuochong/deploy/update.sh      # 先把 jar 构建出来
+#   sudo systemctl start zhuochong-qq
+#   sudo systemctl status zhuochong-qq
+#   journalctl -u zhuochong-qq -f                    # 看 [QQ] 日志
+#
+# 日常更新：bash /root/arona/zhuochong/deploy/update.sh（自动构建+切换+重启+体检）
+# 回滚：    bash /root/arona/zhuochong/deploy/rollback.sh
+#
+# 敏感值放在仓库外 /root/zc-secrets/env.qq，权限 600，绝不进 git。
+# ============================================================
+[Unit]
+Description=ZhuoChong backend + QQ bot (NapCat / OneBot 11)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+# 注意：Maven 项目在仓库的 zhuochong/ 子目录下
+WorkingDirectory=/root/arona/zhuochong
+
+# 敏感值 & 可选项（文件不存在也不报错）
+EnvironmentFile=-/root/zc-secrets/env.qq
+
+# 时区一定要对，否则"当前时间"注入与事件簿时间会错
+Environment=TZ=Asia/Shanghai
+Environment=ZC_APP_DIR=/root/arona/zhuochong
+Environment=ZC_QQ_ENABLED=true
+
+# 跑的是「当前槽位」的 jar：update.sh / rollback.sh 只换文件，不动这个配置
+ExecStart=/bin/bash /root/arona/zhuochong/deploy/qq-bot-start.sh
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
