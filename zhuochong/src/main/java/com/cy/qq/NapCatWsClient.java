@@ -63,6 +63,8 @@ public class NapCatWsClient {
     private volatile boolean running = false;
     private volatile long lastEventAt = 0L;
     private volatile long lastConnectAt = 0L;
+    /** 本次连接是什么时候建立的（用来判断"连上立刻就断"的情况） */
+    private volatile long lastOpenAt = 0L;
     private volatile int backoffSec = 3;
     private volatile int missBeats = 0;
 
@@ -176,6 +178,9 @@ public class NapCatWsClient {
         JsonNode r = callApi("get_status", M.createObjectNode(), 8000);
         if (r != null && r.path("retcode").asInt(-1) == 0) {
             missBeats = 0;
+            // ★ 只有心跳成功才认为连接是"健康活着"的，这时才把退避重置回 3s。
+            //   握手成功就重置会让「连上→立刻被踢」变成每 3 秒一次的热循环（实测 19 分钟 382 次）。
+            backoffSec = 3;
             return;
         }
         missBeats++;
@@ -210,9 +215,11 @@ public class NapCatWsClient {
             // ★ 连接句柄就在这里落地：这是「连接已建立」的唯一可靠时机
             ws = webSocket;
             connected = true;
-            backoffSec = 3;
+            // 注意：这里**不重置退避**。握手成功不代表连接可用（token 不对时 NapCat 会握手后立刻踢掉），
+            // 只有心跳成功才把 backoffSec 重置回 3s，避免「连上→被踢→3s 后再连」的热循环。
             missBeats = 0;
             lastConnectAt = System.currentTimeMillis();
+            lastOpenAt = System.currentTimeMillis();
             stateSinkSafe(true);
             webSocket.request(Long.MAX_VALUE);
             System.out.println("[QQ] NapCat WS 已连接 ✓");
@@ -253,8 +260,11 @@ public class NapCatWsClient {
             connected = false;
             ws = null;
             stateSinkSafe(false);
-            System.out.println("[QQ] WS 已断开: " + statusCode + " " + (reason == null ? "" : reason) + " → 准备重连");
+            long lived = lastOpenAt > 0 ? System.currentTimeMillis() - lastOpenAt : 0;
+            System.out.println("[QQ] WS 已断开: " + statusCode + " " + (reason == null ? "" : reason)
+                    + "（连接仅存活 " + lived + "ms）→ " + backoffHint(lived));
             reconnectCount.incrementAndGet();
+            if (lived >= 30_000) backoffSec = 3; // 稳定活过 30 秒才算"健康连接"，可以快速重连
             scheduleReconnect();
             return null;
         }
@@ -265,10 +275,19 @@ public class NapCatWsClient {
             connected = false;
             ws = null;
             stateSinkSafe(false);
-            System.out.println("[QQ] WS 错误: " + (error == null ? "unknown" : error.getMessage()) + " → 准备重连");
+            long lived = lastOpenAt > 0 ? System.currentTimeMillis() - lastOpenAt : 0;
+            System.out.println("[QQ] WS 错误: " + (error == null ? "unknown" : error.getMessage())
+                    + "（连接仅存活 " + lived + "ms）→ " + backoffHint(lived));
             reconnectCount.incrementAndGet();
+            if (lived >= 30_000) backoffSec = 3;
             scheduleReconnect();
         }
+    }
+
+    /** 断线原因提示：立刻被踢多半是 token / NapCat 掉线，不是网络抖动 */
+    private static String backoffHint(long livedMs) {
+        if (livedMs < 10_000) return "连上就断，优先检查 token 是否与 NapCat 一致、小号是否在线";
+        return "退避后重连";
     }
 
     /** 拆包后的完整 JSON 帧：先匹配 API 回执（echo），再交给事件处理 */

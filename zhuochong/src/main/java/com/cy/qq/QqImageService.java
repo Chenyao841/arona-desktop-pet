@@ -76,9 +76,13 @@ public class QqImageService {
         String base64 = Base64.getEncoder().encodeToString(jpeg);
         System.out.println("[QQ] 图片已缩放 " + raw.length / 1024 + "KB → " + jpeg.length / 1024
                 + "KB，送视觉模型（" + (System.currentTimeMillis() - t0) + "ms）");
-        String desc = deepSeekService.chatVision(base64, PROMPT, 600);
+        // 用 chatVisionContentOnly：只认正式回答，不接受 reasoning_content 兜底。
+        // 因为现在的视觉模型多是"推理模型"，思考过程会跑到 reasoning_content 里；
+        // 把思考过程当图片描述用会得到一堆"我们需要回答这个问题…"的废话。
+        // max_tokens 给足（2000），否则思考先把它吃光、content 变空。
+        String desc = deepSeekService.chatVisionContentOnly(base64, PROMPT, 2000);
         if (desc == null || desc.trim().isEmpty()) {
-            System.out.println("[QQ] 视觉模型没有返回描述（未配 Key 或模型不可用）");
+            System.out.println("[QQ] 视觉模型没有返回描述（模型不支持读图 / max_tokens 被思考吃光 / 未配 Key）");
             return null;
         }
         String clean = desc.trim().replaceAll("\\s+", " ");
