@@ -139,6 +139,8 @@ public class QqAdminService {
             case "blacklist": case "黑名单":
             case "prompt": case "提示词":
             case "style": case "语料":
+            case "note": case "笔记": case "记住这条":
+            case "notes": case "记忆": case "记忆列表":
                 return true;
             default:
                 return false;
@@ -235,6 +237,42 @@ public class QqAdminService {
 
             case "style": case "语料":
                 return styleReport();
+
+            case "note": case "笔记": case "记住这条":
+                // /note <内容>            钉一条长期记忆（永久保留）
+                // /note del <id>          删掉一条
+                if (parts.length >= 3 && ("del".equalsIgnoreCase(parts[2]) || "删".equals(parts[2]) || "删除".equals(parts[2]))) {
+                    int id = (int) parseLong(parts[3 - 1], -1);
+                    if (id <= 0) return "用法：/note del <id>（id 用 /notes 查）";
+                    boolean ok = memory.deleteNote(id);
+                    return ok ? "已删除记忆 #" + id : "没找到 #" + id;
+                }
+                if (parts.length < 2) {
+                    return "用法：\n/note 你最该记住的一句话（永久保留，自动提炼不会清掉）\n"
+                            + "/notes 看当前记忆\n/note del <id> 删除";
+                }
+                String noteText = rest(parts, 1);
+                String ch = memoryScopeCharacter(fromGroup, userId);
+                if (ch == null) return "记忆隔离已关闭（qq.memory-scope=off），无法写入群记忆";
+                if (!memory.pinNote(ch, noteText)) return "写入失败（内容为空？）";
+                return "已记住（角色名 " + ch + "）：" + noteText + "\n下次对话就会带上；/notes 可查看";
+
+            case "notes": case "记忆": case "记忆列表": {
+                String ch2 = memoryScopeCharacter(fromGroup, userId);
+                if (ch2 == null) return "记忆隔离已关闭（qq.memory-scope=off）";
+                java.util.List<com.cy.pojo.PetMemory> list = memory.listNotes(ch2);
+                if (list.isEmpty()) return "当前还没有记忆（角色名 " + ch2 + "）。用 /note 内容 钉一条。";
+                StringBuilder sb = new StringBuilder("【记忆】").append(ch2).append("，共 ").append(list.size()).append(" 条\n");
+                int i = 1;
+                for (com.cy.pojo.PetMemory m : list) {
+                    if (i > MAX_LINES) break;
+                    String c = m.getContent() == null ? "" : m.getContent();
+                    if (c.length() > 60) c = c.substring(0, 60) + "…";
+                    sb.append(i++).append(". #").append(m.getId()).append(' ').append(c).append('\n');
+                }
+                sb.append("置顶的（[置顶] 开头）不会被自动提炼清掉；/note del <id> 删除");
+                return sb.toString();
+            }
 
             case "delay": case "延迟": {
                 if (parts.length < 2) return "当前固定回复延迟：" + tuning.replyDelaySec() + "s\n用法：/delay 3（0 = 立刻回）";
@@ -414,6 +452,12 @@ public class QqAdminService {
         return String.join(" ", java.util.Arrays.copyOfRange(parts, from, parts.length)).trim();
     }
 
+    /** 记忆写哪个命名空间：群里 → 阿罗娜-群{群号}；私聊 → 阿罗娜-私聊{QQ号} */
+    private String memoryScopeCharacter(long fromGroup, long userId) {
+        if (fromGroup > 0) return memory.characterForGroup(fromGroup);
+        return memory.characterForPrivate(userId);
+    }
+
     // ===== 各指令实现 =====
 
     /** 指令清单（私聊兜底与 /help 共用） */
@@ -435,6 +479,7 @@ public class QqAdminService {
                 + "\n/emoji [gap 5|on|off] 表情包概况与调整"
                 + "\n/prompt [show|set|add] <system|function> 查看/修改人设提示词"
                 + "\n/style 风格语料概况（QQ 是否注入）"
+                + "\n/note <内容> 钉一条长期记忆；/notes 查看；/note del <id> 删除"
                 + "\n（只有管理员 QQ 能用；私聊除指令外可以直接和我聊天）";
     }
 

@@ -72,8 +72,11 @@ public class QqChatService {
         try {
             String vision = describeImages(imageUrls);
             String userMessage = buildUserMessage(groupId, userId, speaker, text, vision, imageUrls, fromAdmin);
+            // ★ 把图片描述一起入库（ai_history.user_text）：否则下一轮问"图里你长什么样"，
+            //   模型看不到任何图片信息（历史里只有原文，往往是空的）。
+            String storeText = buildStoreText(text, vision);
             DeepSeekService.AiResult r = deepSeekService.chat(
-                    userMessage, text, groupSessionId(groupId),
+                    userMessage, storeText, groupSessionId(groupId),
                     fromAdmin ? "qq_chat_admin" : "qq_chat", null, false,
                     memoryService.characterFor(groupId, userId));
             String out = (r != null && r.boat_text != null) ? r.boat_text.trim() : "";
@@ -106,8 +109,9 @@ public class QqChatService {
             }
             if (text != null && !text.trim().isEmpty()) um.append("：").append(text);
             else um.append("（没写字）");
+            String storeText = buildStoreText(text, vision);
             DeepSeekService.AiResult r = deepSeekService.chat(
-                    um.toString(), text == null ? "" : text, privateSessionId(userId), "qq_chat_admin", null, false,
+                    um.toString(), storeText, privateSessionId(userId), "qq_chat_admin", null, false,
                     "阿罗娜-私聊" + userId);
             String out = (r != null && r.boat_text != null) ? r.boat_text.trim() : "";
             if (out.isEmpty()) out = FALLBACK;
@@ -157,6 +161,16 @@ public class QqChatService {
     }
 
     // ===== 内部 =====
+
+    /** 入库存什么：原文 + 〔图片：看到的描述〕，让后续轮次还记得"他发过这张图" */
+    private String buildStoreText(String text, String vision) {
+        String t = text == null ? "" : text.trim();
+        if (vision == null || vision.trim().isEmpty()) return t;
+        String desc = vision.trim();
+        if (desc.length() > 100) desc = desc.substring(0, 100) + "…";
+        String tag = "〔图片：" + desc + "〕";
+        return t.isEmpty() ? tag : t + " " + tag;
+    }
 
     /** 逐张看图；全部失败返回空串。单张失败不影响其它张（图片处理可能抛 Error，例如无 X11 的 AWT 初始化） */
     private String describeImages(List<String> imageUrls) {

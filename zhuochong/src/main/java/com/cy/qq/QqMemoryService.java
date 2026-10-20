@@ -30,6 +30,9 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class QqMemoryService {
 
+    /** 管理员用 /note 钉住的事实加这个前缀；自动提炼时会保留它们 */
+    public static final String PINNED_PREFIX = "[置顶] ";
+
     @Autowired
     private QqConfig config;
 
@@ -80,17 +83,88 @@ public class QqMemoryService {
 
     /** 立即提炼某个群的记忆（异步调用方保证不卡事件处理） */
     public void consolidate(long groupId) {
-        String character = characterForGroup(groupId);
+        consolidateCharacter(characterForGroup(groupId), "qq_g" + groupId, groupId);
+    }
+
+    /**
+     * 提炼某个角色名的记忆。
+     *
+     * <p>注意：{@code DeepSeekService.consolidateMemory} 会先 {@code deleteAll} 再写回 AI 提炼结果，
+     * 所以这里先把管理员 {@code /note} 钉住的事实快照下来，提炼完再补回去（否则会被清掉）。
+     */
+    public void consolidateCharacter(String character, String sessionId, long usageGroupId) {
         if (character == null) {
             System.out.println("[QQ] 记忆隔离已关闭（qq.memory-scope=off），跳过提炼");
             return;
         }
-        usage.beginGroup(groupId);
+        java.util.List<String> pinned = new java.util.ArrayList<>();
         try {
-            deepSeekService.consolidateMemory(character, "qq_g" + groupId);
+            List<PetMemory> before = petMemoryMapper.findByCharacter(character);
+            if (before != null) {
+                for (PetMemory m : before) {
+                    if (m.getContent() != null && m.getContent().startsWith(PINNED_PREFIX)) pinned.add(m.getContent());
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[QQ] 读取置顶记忆失败: " + e.getMessage());
+        }
+
+        usage.beginGroup(usageGroupId);
+        try {
+            deepSeekService.consolidateMemory(character, sessionId);
         } finally {
             usage.end();
         }
+
+        if (!pinned.isEmpty()) {
+            try {
+                java.util.Set<String> now = new java.util.HashSet<>();
+                List<PetMemory> after = petMemoryMapper.findByCharacter(character);
+                if (after != null) for (PetMemory m : after) now.add(m.getContent());
+                int restored = 0;
+                for (String p : pinned) {
+                    if (now.contains(p)) continue;
+                    PetMemory m = new PetMemory();
+                    m.setCharacter_name(character);
+                    m.setContent(p);
+                    petMemoryMapper.insert(m);
+                    restored++;
+                }
+                if (restored > 0) System.out.println("[QQ] 提炼后补回 " + restored + " 条置顶记忆（" + character + "）");
+            } catch (Exception e) {
+                System.out.println("[QQ] 置顶记忆回填失败: " + e.getMessage());
+            }
+        }
+    }
+
+    // ===== 管理员钉住的事实（/note） =====
+
+    /** 私聊记忆角色名 */
+    public String characterForPrivate(long userId) {
+        return "阿罗娜-私聊" + userId;
+    }
+
+    /** 钉一条长期记忆（永久保留，自动提炼不会冲掉） */
+    public boolean pinNote(String character, String text) {
+        if (character == null || text == null || text.trim().isEmpty()) return false;
+        PetMemory m = new PetMemory();
+        m.setCharacter_name(character);
+        m.setContent(PINNED_PREFIX + text.trim());
+        petMemoryMapper.insert(m);
+        System.out.println("[QQ] 新增置顶记忆（" + character + "）: " + text.trim());
+        return true;
+    }
+
+    /** 列出记忆（前置 id，方便删除） */
+    public List<PetMemory> listNotes(String character) {
+        if (character == null) return java.util.Collections.emptyList();
+        List<PetMemory> all = petMemoryMapper.findByCharacter(character);
+        return all == null ? java.util.Collections.emptyList() : all;
+    }
+
+    /** 删除一条记忆（按 id） */
+    public boolean deleteNote(int id) {
+        return petMemoryMapper.delete(id) > 0;
     }
 
     /** 清空某个群的长期记忆 */
