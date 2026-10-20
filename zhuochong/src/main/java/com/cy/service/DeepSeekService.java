@@ -83,6 +83,14 @@ public class DeepSeekService {
     @org.springframework.beans.factory.annotation.Value("${ai.style-for-qq:true}")
     private boolean styleForQq;
 
+    /**
+     * QQ 渠道是否复用桌宠的「功能清单」（ai_prompt.function）。
+     * 默认 false —— 那份清单写的是点歌/麻将/抽卡/看屏幕/TTS 等桌面能力，群里没有，
+     * 注入后模型会答应做不到的事。QQ 专属清单请建 prompt_type=qq_function。
+     */
+    @org.springframework.beans.factory.annotation.Value("${ai.function-for-qq:false}")
+    private boolean functionForQq;
+
     private String visionModelName() {
         return esc(visionModel, "deepseek-v4-flash-vision-exp");
     }
@@ -242,6 +250,7 @@ public class DeepSeekService {
 
         // 构建 system prompt
         StringBuilder sp = new StringBuilder();
+        boolean qqChannel = userOperation != null && userOperation.startsWith("qq_chat");
         BasicInfo aiInfo = basicInfoMapper.findById(1);
         BasicInfo userInfo = basicInfoMapper.findById(2);
         if (aiInfo != null) {
@@ -253,7 +262,16 @@ public class DeepSeekService {
             sp.append("，").append(nn(userInfo.get身份(), "夏莱的老师")).append("。\n");
         }
         AiPrompt systemP = aiPromptMapper.findByType("system");
-        AiPrompt funcP = aiPromptMapper.findByType("function");
+        // 功能清单：桌宠用 function；QQ 渠道默认**不注入**（那上面是点歌/麻将/抽卡/看屏幕等桌面能力，
+        // 群里根本没有，注入了只会让它吹牛）。QQ 想给清单就单独建一条 prompt_type=qq_function 的提示词；
+        // 确实想让 QQ 复用桌面清单时才把 ai.function-for-qq 打开。
+        AiPrompt funcP;
+        if (qqChannel) {
+            funcP = aiPromptMapper.findByType("qq_function");
+            if (funcP == null && functionForQq) funcP = aiPromptMapper.findByType("function");
+        } else {
+            funcP = aiPromptMapper.findByType("function");
+        }
         if (systemP != null && systemP.getContent() != null) sp.append(systemP.getContent()).append("\n");
         if (funcP != null && funcP.getContent() != null) sp.append(funcP.getContent()).append("\n");
 
@@ -327,6 +345,14 @@ public class DeepSeekService {
             sp.append("- emotion 请务必给出（用来挑一张表情贴在回复后面），从[开心、困惑、激动、害羞、生气、认真、期待、怀疑、慌张、难过]里选最贴近的一个。\n");
             // 群友发图但这次没看清时，别硬编内容，如实说一句（避免"明明发了图却被无视"）
             sp.append("- 如果对方发了图片但你这次没拿到画面内容，就自然地说一句没看清、请他再说说，不要凭空描述画面。\n");
+            // 能力边界：桌面端那套功能群里没有，别答应做不到的事（最容易露馅的地方）
+            sp.append("\n【你在 QQ 群里能做的】\n");
+            sp.append("- 文字聊天；看别人 @ 你时附带的图片；按情绪发一张表情图。\n");
+            sp.append("- 管理员用 / 开头的管理指令（/status /usage /groups 等），普通群友用不了。\n");
+            sp.append("【你在 QQ 群里做不到的——别答应、别假装做了】\n");
+            sp.append("- 点歌放歌、麻将、抽卡、看屏幕/操作电脑、发语音消息、点「记住/遗忘」按钮："
+                    + "这些只有桌面端有。被要求时坦白说「这个我只在电脑上才能做」，"
+                    + "可以自然地把话题接下去，但绝不能编造「已经帮你放了」。\n");
         }
 
         // 管理员专属：称呼「管理员」、语气更亲近，但仍然是公开场合，不许泄露隐私

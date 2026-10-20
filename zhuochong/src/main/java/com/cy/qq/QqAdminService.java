@@ -342,7 +342,8 @@ public class QqAdminService {
                     .append("，").append(c.length()).append(" 字）").append(head2).append('\n');
         }
         sb.append("查看：/prompt show system　修改：/prompt set system 内容　追加：/prompt add system 内容\n");
-        sb.append("注意：QQ 群和桌宠共用这些提示词；QQ 渠道规则（短回复/防注入/称呼管理员）是代码里额外追加的。");
+        sb.append("提示：system/qq_function 是 QQ 和桌宠共用的；function（桌面功能清单）在 QQ 里默认不注入，"
+                + "需要 QQ 专用能力清单就 /prompt set qq_function 内容");
         return sb.toString();
     }
 
@@ -363,7 +364,20 @@ public class QqAdminService {
         if (content == null || content.trim().isEmpty()) return "内容不能为空";
         if (content.length() > 4000) return "内容太长（" + content.length() + " 字，上限 4000），请去管理页编辑";
         com.cy.pojo.AiPrompt p = aiPromptMapper.findByType(type);
-        if (p == null) return "没有 prompt_type=" + type + " 的提示词。可用：" + typesJoined();
+        if (p == null) {
+            if (append) return "还没有 prompt_type=" + type + " 的提示词；先 /prompt set " + type + " 内容 创建它";
+            // set 时不存在就新建（管理员可直接建 qq_function 这份 QQ 专用能力清单）
+            com.cy.pojo.AiPrompt fresh = new com.cy.pojo.AiPrompt();
+            fresh.setPrompt_type(type);
+            fresh.setContent(content);
+            fresh.setVersion(1);
+            aiPromptMapper.insert(fresh);
+            System.out.println("[QQ] 管理员新建提示词 " + type + "（" + content.length() + " 字）");
+            return "已新建提示词 " + type + "（" + content.length() + " 字，v1）"
+                    + ("qq_function".equals(type)
+                        ? "\nQQ 群里会优先用这一份能力清单（替代桌宠的 function）" : "")
+                    + "\n下一条消息开始生效；要核对就 /prompt show " + type;
+        }
         String old = p.getContent() == null ? "" : p.getContent();
         String neu = append ? (old.isEmpty() ? content : old + "\n" + content) : content;
         p.setContent(neu);

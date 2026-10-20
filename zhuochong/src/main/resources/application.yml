@@ -104,3 +104,6 @@ ai:
   vision-effort: ${ZC_AI_VISION_EFFORT:}
   # QQ 群聊是否也注入「风格语料」（和桌宠同一套参考语境）；false = 不注入
   style-for-qq: ${ZC_AI_STYLE_FOR_QQ:true}
+  # QQ 渠道是否复用桌宠的「功能清单」(ai_prompt.function)：默认 false（那份清单是点歌/麻将/抽卡/看屏幕，群里做不到）
+  # QQ 专用能力清单请建 prompt_type=qq_function（管理员在 QQ 里：/prompt set qq_function 内容）
+  function-for-qq: ${ZC_AI_FUNCTION_FOR_QQ:false}
