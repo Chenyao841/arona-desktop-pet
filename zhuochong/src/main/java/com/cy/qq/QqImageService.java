@@ -61,14 +61,28 @@ public class QqImageService {
     /**
      * 下载 → 缩放 → 视觉描述。
      *
-     * @param url OneBot {@code image} 段里的 url
+     * @param url OneBot {@code image} 段里的 url（也接受 {@code base64://} 内联图，NapCat 有时这么给）
      * @return 中文描述；失败返回 null（调用方降级为「群友发了一张图」）
      */
     public String describe(String url) {
         if (url == null || url.isEmpty()) return null;
         long t0 = System.currentTimeMillis();
-        byte[] raw = download(url);
-        if (raw == null) return null;
+
+        // base64:// 内联图：不用下载，直接解码
+        byte[] raw;
+        if (url.startsWith("base64://")) {
+            try {
+                raw = Base64.getDecoder().decode(url.substring("base64://".length()));
+                System.out.println("[QQ] 内联 base64 图片，" + raw.length / 1024 + "KB");
+            } catch (Exception e) {
+                System.out.println("[QQ] 内联 base64 解码失败: " + e.getMessage());
+                return null;
+            }
+        } else {
+            raw = download(url);
+            if (raw == null) return null;
+        }
+
         byte[] jpeg = toJpeg(raw, Math.max(200, config.getVisionMaxEdge()));
         if (jpeg == null) {
             System.out.println("[QQ] 图片解码失败（可能不是常见格式）: " + url);

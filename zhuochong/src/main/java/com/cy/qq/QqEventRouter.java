@@ -63,6 +63,9 @@ public class QqEventRouter {
     @Autowired
     private QqTuning tuning;
 
+    @Autowired
+    private QqImageCache imageCache;
+
     /** 冷却表：key = "群号_QQ号"，value = 上次响应时间戳 */
     private final Map<String, Long> lastReplyAt = new ConcurrentHashMap<>();
 
@@ -234,13 +237,20 @@ public class QqEventRouter {
                     case "text":
                         body.append(data.path("text").asText(""));
                         break;
-                    case "image":
+                    case "image": {
                         body.append("[图片]");
-                        // P1：图片识别要的是 url（NapCat 给的图床/本地 HTTP 地址）
+                        // 图片识别要的是 url（NapCat 给的图床地址）；退而求其次用 file（可能是 base64:// 内联）
                         String imgUrl = data.path("url").asText("");
                         if (imgUrl.isEmpty()) imgUrl = data.path("file").asText("");
-                        if (!imgUrl.isEmpty()) imageUrls.add(imgUrl);
+                        if (!imgUrl.isEmpty()) {
+                            imageUrls.add(imgUrl);
+                            System.out.println("[QQ] image 段 → " + abbrev(imgUrl, 120));
+                        } else {
+                            // 拿不到地址时把原始段打出来，方便判断 NapCat 到底给了什么字段
+                            System.out.println("[QQ] image 段没有 url/file，原始数据: " + abbrev(data.toString(), 300));
+                        }
                         break;
+                    }
                     case "face":
                         body.append("[表情]");
                         break;
@@ -260,6 +270,29 @@ public class QqEventRouter {
             body.append(stripCqCodes(rawMessage.replace(atTag, "")));
         }
 
+        JsonNode sender = ev.path("sender");
+        String nickname = sender.path("card").asText("");
+        if (nickname.trim().isEmpty()) nickname = sender.path("nickname").asText("");
+        if (nickname.trim().isEmpty()) nickname = "QQ" + userId;
+        long messageId = parseMessageId(ev);
+
+        // ===== 图片和 @ 常常是两条消息：先发图、再 @ 机器人 =====
+        // 纯图且没有 @ 的消息本来会被忽略（没做 P2 闲置响应），这里把图缓存 2 分钟，
+        // 同一个人随后 @ 机器人时自动带上——否则模型只看到"只 @ 了你，没说话"。
+        if (!imageUrls.isEmpty() && !atMe) {
+            imageCache.put(groupId, userId, imageUrls);
+            ignoredCount.incrementAndGet();
+            System.out.println("[QQ] 没 @ 但带图（" + nickname + "）：缓存 " + imageUrls.size() + " 张，等 ta @ 我时使用");
+            return;
+        }
+        if (atMe && imageUrls.isEmpty()) {
+            List<String> cached = imageCache.take(groupId, userId);
+            if (!cached.isEmpty()) {
+                imageUrls.addAll(cached);
+                System.out.println("[QQ] 用上 " + nickname + " 刚才发的 " + cached.size() + " 张图（先发图后 @）");
+            }
+        }
+
         if (!atMe && !config.isTriggerAll()) {
             ignoredCount.incrementAndGet();
             return; // 只响应 @ 自己
@@ -267,12 +300,6 @@ public class QqEventRouter {
 
         String text = body.toString().trim().replaceAll("\\s{2,}", " ");
         if (text.length() > MAX_INPUT_CHARS) text = text.substring(0, MAX_INPUT_CHARS);
-
-        JsonNode sender = ev.path("sender");
-        String nickname = sender.path("card").asText("");
-        if (nickname.trim().isEmpty()) nickname = sender.path("nickname").asText("");
-        if (nickname.trim().isEmpty()) nickname = "QQ" + userId;
-        long messageId = parseMessageId(ev);
 
         // ===== P4 黑名单：被拉黑的人 @ 一律静默忽略（管理员不算，免得把自己锁死） =====
         if (blacklist.isBanned(userId) && !adminService.isAdmin(userId)) {
@@ -399,6 +426,13 @@ public class QqEventRouter {
     private static String stripCqCodes(String raw) {
         if (raw == null) return "";
         return raw.replaceAll("\\[CQ:[^]]*]", "");
+    }
+
+    /** 日志用：截断长字符串（base64/URL 可能很长） */
+    private static String abbrev(String s, int max) {
+        if (s == null) return "";
+        String t = s.replace("\r", " ").replace("\n", " ");
+        return t.length() > max ? t.substring(0, max) + "…(" + t.length() + "字符)" : t;
     }
 
     private static String head(String s) {
