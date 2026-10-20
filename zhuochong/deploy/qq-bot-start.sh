@@ -16,7 +16,32 @@ APP_DIR="${ZC_APP_DIR:-/root/arona/zhuochong}"
 JAR="${ZC_JAR:-/root/zc/app/zhuochong.jar}"
 ENV_FILE="${ZC_ENV_FILE:-/root/zc-secrets/env.qq}"
 
-[ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
+# 安全读 env：只认 KEY=VALUE 行，坏行跳过并告警。
+# 为什么不用 `. "$ENV_FILE"`：一行写错（比如把 token 单独写一行、用了中文冒号）
+# 会被 bash 当命令执行 → 整个启动脚本退出 → systemd 无限重启。
+if [ -f "$ENV_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in ''|\#*) continue ;; esac
+    case "$line" in
+      *=*)
+        key="${line%%=*}"; val="${line#*=}"
+        case "$key" in
+          *[!A-Za-z0-9_]*|'')
+            echo "[qq-bot][warn] $ENV_FILE 里有不合法的行，已跳过：$line" >&2
+            continue
+            ;;
+        esac
+        export "$key=$val"
+        ;;
+      *)
+        echo "[qq-bot][warn] $ENV_FILE 里有不合法的行，已跳过：$line" >&2
+        ;;
+    esac
+  done < "$ENV_FILE"
+else
+  echo "[qq-bot][warn] 密钥文件不存在：$ENV_FILE（照 deploy/env.qq.example 建一份）" >&2
+fi
 
 # ===== QQ 机器人基础 =====
 export ZC_QQ_ENABLED="${ZC_QQ_ENABLED:-true}"

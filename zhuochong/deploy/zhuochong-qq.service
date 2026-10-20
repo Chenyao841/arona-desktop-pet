@@ -40,6 +40,10 @@ ExecStart=/bin/bash /root/arona/zhuochong/deploy/qq-bot-start.sh
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
+# 启动失败别无限刷屏：5 分钟内失败 10 次就停下来等人工（配错 env 时尤其重要）
+# 修好后：systemctl reset-failed zhuochong-qq && systemctl start zhuochong-qq
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Install]
 WantedBy=multi-user.target

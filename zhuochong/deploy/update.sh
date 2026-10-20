@@ -60,7 +60,13 @@ if [ "$NO_GIT" = "1" ]; then
   AFTER_REV="nogit-$(date +%Y%m%d-%H%M%S)"
 else
   log "拉取 $BRANCH ..."
-  git -C "$REPO_DIR" fetch --prune --tags origin || die "git fetch 失败（网络？）"
+  if ! git -C "$REPO_DIR" fetch --prune --tags origin; then
+    warn "git fetch 失败（服务器连 GitHub 不稳：GnuTLS/超时都常见）"
+    warn "两个选择："
+    warn "  a) 重试：git -C $REPO_DIR fetch --prune origin   （或挂代理后再跑本脚本）"
+    warn "  b) 源码已经是最新时跳过 git：bash $0 --no-git"
+    die "已中止，未动线上 jar"
+  fi
   BEFORE_REV="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
   if [ -n "$(git -C "$REPO_DIR" status --porcelain)" ]; then
     warn "工作区有未提交改动，将被 reset 丢弃："
