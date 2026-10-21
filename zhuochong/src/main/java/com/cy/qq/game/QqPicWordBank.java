@@ -103,6 +103,71 @@ public class QqPicWordBank {
         return null;
     }
 
+    // ===== 刷题库：让模型生成一批"完全不同"的新词并入库 =====
+
+    @Autowired
+    private QqPicWordGen wordGen;
+
+    /**
+     * 刷新题库：生成 {@code count} 个和现有词库（含别名）完全不重合的新词，追加进词库。
+     *
+     * <p>为什么是"追加"不是"替换"：词库和桌宠共用一张表，直接删会连带把桌宠的题换掉；
+     * 想清理旧的用 {@code /题库 删 <id>} 或 {@code /题库 禁用 <id>}。
+     *
+     * @return 给管理员看的结果文本
+     */
+    public String refresh(int count) {
+        java.util.Set<String> avoid = new java.util.LinkedHashSet<>();
+        for (PictionaryWord w : all()) {
+            if (w.getWord() != null && !w.getWord().trim().isEmpty()) avoid.add(w.getWord().trim());
+            if (w.getAliases() != null) {
+                for (String a : w.getAliases().split("[|,，/、;；]")) {
+                    if (!a.trim().isEmpty()) avoid.add(a.trim());
+                }
+            }
+        }
+        int before = avoid.isEmpty() ? 0 : mapper.countWords();
+        System.out.println("[你画我猜] 开始刷新题库：目标 " + count + " 个，现有 " + before + " 个词（含别名共 "
+                + avoid.size() + " 个黑名单）");
+
+        QqPicWordGen.Result r = wordGen.generate(count, avoid);
+        if (r.error != null && r.words.isEmpty()) {
+            System.out.println("[你画我猜] 刷新题库失败: " + r.error);
+            return "❌ 刷新失败：" + r.error;
+        }
+
+        int ok = 0, dup = 0, easy = 0, mid = 0, hard = 0;
+        StringBuilder failed = new StringBuilder();
+        for (PictionaryWord w : r.words) {
+            try {
+                mapper.insertWord(w);
+                ok++;
+                int d = w.getDifficulty() == null ? 1 : w.getDifficulty();
+                if (d <= 1) easy++;
+                else if (d == 2) mid++;
+                else hard++;
+            } catch (Exception e) {
+                dup++;
+                if (failed.length() < 80) failed.append(w.getWord()).append(' ');
+            }
+        }
+        int after = mapper.countWords();
+        System.out.println("[你画我猜] 刷新题库完成：新增 " + ok + "（简单 " + easy + " / 中等 " + mid
+                + " / 困难 " + hard + "），重复跳过 " + (dup + r.droppedDup) + "，格式不合格 " + r.droppedBad
+                + "；词库 " + before + " → " + after);
+
+        StringBuilder sb = new StringBuilder("✅ 题库刷新完成\n");
+        sb.append("新增 ").append(ok).append(" 个（简单 ").append(easy).append(" / 中等 ").append(mid)
+                .append(" / 困难 ").append(hard).append("）\n");
+        if (r.droppedDup + dup > 0) sb.append("跳过重复 ").append(r.droppedDup + dup).append(" 个");
+        if (r.droppedBad > 0) sb.append(sb.charAt(sb.length() - 1) == '\n' ? "" : "，").append("格式不合格 ").append(r.droppedBad).append(" 个");
+        if (r.droppedDup + dup > 0 || r.droppedBad > 0) sb.append('\n');
+        if (failed.length() > 0) sb.append("入库失败（多半是同名）：").append(failed.toString().trim()).append('\n');
+        sb.append("词库共 ").append(after).append(" 个词\n");
+        sb.append("看新词：/题库 列表　不满意：/题库 删 <id> 或 /题库 禁用 <id>");
+        return sb.toString();
+    }
+
     private QqPicGameRow toRow(PictionaryWord w) {
         QqPicGameRow r = new QqPicGameRow();
         r.setWord_id(w.getId() == null ? 0 : w.getId().intValue());

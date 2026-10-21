@@ -310,6 +310,31 @@ public class QqPicCommands {
                 boolean on = "启用".equals(sub);
                 return wordBank.setEnabled(id, on) ? "已" + (on ? "启用" : "禁用") + " #" + id : "没找到 #" + id;
             }
+            case "刷新": case "换一批": case "生成": case "重新获取": {
+                int n = (int) parseLong(parts.length > 2 ? parts[2] : "", QqPicWordGen.BATCH);
+                if (n < 10 || n > 200) return "数量范围 10~200，例：/题库 刷新 100";
+                final int cnt = n;
+                final long cid = chatId;
+                final String ct = chatType;
+                sendPlain(ct, cid, "开始生成 " + cnt + " 个全新题目（会避开现有全部词和别名），大约 20~60 秒，好了我发结果给你～");
+                Thread th = new Thread(() -> {
+                    try {
+                        usage.beginPic(cid);
+                        String report;
+                        try {
+                            report = wordBank.refresh(cnt);
+                        } finally {
+                            usage.end();
+                        }
+                        sendPlain(ct, cid, report);
+                    } catch (Exception e) {
+                        sendPlain(ct, cid, "❌ 刷新题库出错：" + e.getMessage());
+                    }
+                }, "qq-pic-wordgen");
+                th.setDaemon(true);
+                th.start();
+                return null;   // 已经自己回了消息
+            }
             case "重置": {
                 long g = parseLong(parts.length > 2 ? parts[2] : "", chatId);
                 if (g <= 0) return "用法：/题库 重置 [群号]（不写就是当前群）";
@@ -352,6 +377,7 @@ public class QqPicCommands {
                 + "/题库 别名 <id> 别名1|别名2\n"
                 + "/题库 难度 <id> 简单|中等|困难\n"
                 + "/题库 禁用 <id>　/题库 启用 <id>\n"
+                + "/题库 刷新 [数量]         让模型生成一批全新题目并入库（默认 100，避开现有全部词）\n"
                 + "/题库 重置 [群号]         清空该群今天的出题记录";
     }
 

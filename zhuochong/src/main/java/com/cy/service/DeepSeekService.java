@@ -805,15 +805,25 @@ public class DeepSeekService {
 
     // 轻量对话（麻将插件评论等）：system + user 纯文本，deepseek-chat
     public String chatPlain(String system, String user) {
+        return chatPlain(system, user, 1024, "chat");
+    }
+
+    /**
+     * 轻量"一次性"调用：system + user 纯文本，指定 max_tokens，并把用量记到指定 kind。
+     *
+     * <p>给小游戏"刷题库"这类场景用：要一次吐几十上百个词，1024 的 max_tokens 不够；
+     * 而且不走 {@code chat()} 那条链路（不写会话历史、不写长期记忆）。
+     */
+    public String chatPlain(String system, String user, int maxTokens, String usageKind) {
         List<AiConfig> configs = aiConfigMapper.findAll();
         if (configs.isEmpty()) return null;
         AiConfig cfg = configs.get(0);
         if (cfg.getApi_key() == null || cfg.getApi_key().trim().isEmpty()) return null;
         String body = "{\"model\":\"deepseek-chat\"," +
-                "\"max_tokens\":1024," +
+                "\"max_tokens\":" + Math.max(256, maxTokens) + "," +
                 "\"messages\":[{\"role\":\"system\",\"content\":" + toJsonStr(system) + "}," +
                 "{\"role\":\"user\",\"content\":" + toJsonStr(user) + "}]}";
-        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions"); // 空串也回落（管理页整体覆盖时可能写成空串）
+        String apiUrl = esc(cfg.getApi_url(), "https://api.deepseek.com/v1/chat/completions");
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -821,6 +831,7 @@ public class DeepSeekService {
             HttpEntity<String> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = restTemplate.postForEntity(apiUrl, entity, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                notifyUsage(usageKind == null ? "chat" : usageKind, "deepseek-chat", response.getBody().get("usage"));
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) response.getBody().get("choices");
                 if (choices != null && !choices.isEmpty()) {
