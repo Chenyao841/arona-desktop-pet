@@ -47,6 +47,9 @@ qq:
   ws-url: ${ZC_QQ_WS_URL:ws://127.0.0.1:3001}
   ws-token: ${ZC_QQ_WS_TOKEN:}
   self-id: ${ZC_QQ_SELF_ID:0}          # 0 = 连上后 get_login_info 自动识别
+  # 机器人在 QQ 里的显示名（放版本号用，例如 阿罗娜（v0.0.7测试））。
+  # 连上 NapCat 后和当前昵称比一次：不一样才调 set_qq_profile 改一次；一样什么都不做；留空 = 完全不动
+  nickname: ${ZC_QQ_NICKNAME:}
   trigger-mode: ${ZC_QQ_TRIGGER_MODE:at}   # at（只理 @）/ all（全量，风控风险高）
   per-user-cooldown-sec: ${ZC_QQ_USER_COOLDOWN:60}
   group-whitelist: ${ZC_QQ_GROUP_WHITELIST:}  # 逗号分隔，空=不限
@@ -71,6 +74,34 @@ qq:
   # 被追问图片细节时，重读留底的原图（拿"当前问题"当提示词）；false = 只用第一次的 90 字描述
   image-reread: ${ZC_QQ_IMAGE_REREAD:true}
   image-reread-max: 2
+  # 图片留底（落盘）：重启后编号仍可重读；内存里只放轻量索引
+  image-store-dir: ${ZC_QQ_IMAGE_DIR:qq_images}
+  image-max-per-group: ${ZC_QQ_IMAGE_MAX_GROUP:500}   # 单个群最多留几张（超出删最早）
+  image-max-per-user: ${ZC_QQ_IMAGE_MAX_USER:500}     # 私聊（管理员 QQ）每人最多留几张
+  image-max-total: ${ZC_QQ_IMAGE_MAX_TOTAL:3000}      # 全局兜底，防群多时吃满磁盘
+  image-ttl-hours: ${ZC_QQ_IMAGE_TTL_HOURS:24}        # 留底有效期
+  # 跟风复读机（主动接话·纯代码不花 token）：同一句话被不同人重复到门槛后，按概率复读一次
+  parrot-enabled: ${ZC_QQ_PARROT:true}
+  parrot-probability: ${ZC_QQ_PARROT_PROB:33}      # 每次触发机会的复读概率（%）
+  parrot-min-users: ${ZC_QQ_PARROT_MIN_USERS:3}    # 需要几个不同用户重复同一句话
+  parrot-window-sec: ${ZC_QQ_PARROT_WINDOW:180}    # 重复统计窗口（秒）
+  parrot-cooldown-triggers: ${ZC_QQ_PARROT_COOLDOWN:1}  # 复读成功后还要跳过几次触发
+  parrot-max-per-hour: ${ZC_QQ_PARROT_MAX_HOUR:3}  # 每组每小时最多复读几次（0=不限）
+  parrot-max-chars: 60                             # 超过这个字数的句子不参与复读
+  # 护短（主动接话·调 AI）：群友 @管理员 或提管理员昵称 + 调侃语气 → 站出来反驳
+  defend-enabled: ${ZC_QQ_DEFEND:true}
+  defend-cooldown-triggers: ${ZC_QQ_DEFEND_COOLDOWN:3}   # 护短一次后跳过几次触发机会
+  defend-max-per-hour: ${ZC_QQ_DEFEND_MAX_HOUR:5}        # 每组每小时最多护短几次（0=不限）
+  # 调侃性关键词（逗号分隔；也认"就这/不会吧/啧啧/笑死/离谱"这类语气标记）
+  defend-keywords: ${ZC_QQ_DEFEND_KEYWORDS:菜,菜鸡,菜鸟,笨蛋,傻瓜,憨,鸽,又鸽,摸鱼,划水,偷懒,摆烂,躺平,辣鸡,垃圾,废物,不行,拉胯}
+  # 管理员的叫法（名字类，逗号分隔）：群里怎么叫管理员就算"提到他"。
+  # 群名片机器人会自己记（管理员在该群说一句话就登记，比如「小羊羔」），这里配的是额外叫法。
+  defend-admin-alias: ${ZC_QQ_DEFEND_ALIAS:小羊羔,小羊}
+  # 引申调侃词（逗号分隔）：这些词单独出现不算，但管理员刚发过言（下面那个窗口内）就算在说他，
+  # 典型场景：管理员叫「小羊羔」，群友说「今晚想吃烤羊」
+  defend-mock-words: ${ZC_QQ_DEFEND_MOCK:羊肉,烤羊,涮羊肉,羊肉串,羊排,全羊,羊蝎子}
+  # 上下文窗口（秒）：管理员最近一次发言在这个时间内，引申调侃词才算"在说他"（0 = 关掉这条路）
+  defend-context-sec: ${ZC_QQ_DEFEND_CONTEXT_SEC:180}
   send-retry: 1                   # 发送失败重试几次（NapCat 偶发超时）
   # P3 管理员体系：只有这些 QQ 能私聊机器人、能用管理指令（逗号分隔，留空=没有管理员）
   admin-qq: ${ZC_QQ_ADMIN_QQ:}

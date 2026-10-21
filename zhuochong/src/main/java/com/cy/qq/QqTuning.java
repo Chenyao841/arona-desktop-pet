@@ -30,6 +30,56 @@ public class QqTuning {
     private volatile int emojiGapOverride = -1;
     /** null = 用配置文件 */
     private volatile Boolean emojiEnabledOverride = null;
+    /** 复读机：-1 / null = 用配置文件 */
+    private volatile int parrotProbOverride = -1;
+    private volatile Boolean parrotEnabledOverride = null;
+    /** 护短：null = 用配置文件 */
+    private volatile Boolean defendEnabledOverride = null;
+    /** 护短的管理员叫法：null = 用配置文件（/defend alias 改的就是这个） */
+    private volatile java.util.Set<String> defendAliasOverride = null;
+
+    /** 群友怎么叫管理员才算"提到他"：配置里的 + 运行时改过的（二选一，运行时优先） */
+    public java.util.Set<String> defendAliases() {
+        java.util.Set<String> v = defendAliasOverride;
+        if (v != null) return new java.util.LinkedHashSet<>(v);
+        return config.getDefendAdminAlias();
+    }
+
+    public void setDefendAliases(java.util.Set<String> aliases) {
+        defendAliasOverride = aliases == null ? null : new java.util.LinkedHashSet<>(aliases);
+        System.out.println("[QQ] 护短的管理员叫法已改为："
+                + (defendAliasOverride == null ? "（恢复配置文件）" : String.join("、", defendAliasOverride)));
+    }
+
+    public boolean defendEnabled() {
+        Boolean v = defendEnabledOverride;
+        return v != null ? v : config.isDefendEnabled();
+    }
+
+    public void setDefendEnabled(boolean on) {
+        defendEnabledOverride = on;
+        System.out.println("[QQ] 护短已" + (on ? "开启" : "关闭"));
+    }
+
+    public boolean parrotEnabled() {
+        Boolean v = parrotEnabledOverride;
+        return v != null ? v : config.isParrotEnabled();
+    }
+
+    public void setParrotEnabled(boolean on) {
+        parrotEnabledOverride = on;
+        System.out.println("[QQ] 跟风复读机已" + (on ? "开启" : "关闭"));
+    }
+
+    public int parrotProbability() {
+        int v = parrotProbOverride;
+        return v >= 0 ? v : Math.max(0, Math.min(100, config.getParrotProbability()));
+    }
+
+    public void setParrotProbability(int percent) {
+        parrotProbOverride = Math.max(0, Math.min(100, percent));
+        System.out.println("[QQ] 复读概率已改为 " + parrotProbOverride + "%");
+    }
 
     public int cooldownSec() {
         int v = cooldownOverride;

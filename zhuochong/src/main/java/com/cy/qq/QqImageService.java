@@ -95,6 +95,11 @@ public class QqImageService {
             this.base64 = base64;
             this.mime = mime;
         }
+
+        /** 从磁盘恢复一张已准备好的图（base64 不含 data: 前缀） */
+        public static Prepared fromBase64(String base64, String mime) {
+            return new Prepared(base64, mime);
+        }
     }
 
     /**

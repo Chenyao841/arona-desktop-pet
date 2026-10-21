@@ -68,6 +68,12 @@ public class NapCatWsClient {
     private volatile int backoffSec = 3;
     private volatile int missBeats = 0;
 
+    /** NapCat 报上来的"我现在叫什么"（get_login_info 的 nickname；改完名会同步更新） */
+    private volatile String selfNickname = "";
+    /** 自动改名失败次数（连错 3 次就不再自动试） */
+    private final java.util.concurrent.atomic.AtomicInteger nickRenameFails =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private final AtomicLong echoSeq = new AtomicLong();
     private final AtomicLong eventCount = new AtomicLong();
     private final AtomicLong sentCount = new AtomicLong();
@@ -235,6 +241,10 @@ public class NapCatWsClient {
                             config.setSelfId(id);
                             System.out.println("[QQ] 自动识别机器人 QQ 号: " + id);
                         }
+                        String nick = data.path("nickname").asText("");
+                        if (!nick.isEmpty()) selfNickname = nick;
+                        // 版本号改名：只在"要的名字和现在的不一样"时改一次
+                        applyDesiredNickname();
                     } else {
                         System.out.println("[QQ] get_login_info 无响应：token 不匹配或 NapCat 未登录 QQ");
                     }
@@ -331,6 +341,87 @@ public class NapCatWsClient {
     }
 
     // ===== 发送 / 调用 =====
+
+    /**
+     * 改机器人自己的 QQ 昵称（版本号就靠这个）。
+     *
+     * <p>OneBot 11 的 {@code set_qq_profile}：NapCat 支持 {@code nickname} 字段。
+     * 改完把本地记的名字同步成新的，避免下次重连又改一遍。
+     *
+     * @return NapCat 的回执（失败时给调用方打印 retcode/message 用）
+     */
+    public JsonNode setProfileNickname(String nickname) {
+        if (nickname == null || nickname.trim().isEmpty()) return null;
+        String want = nickname.trim();
+        ObjectNode params = M.createObjectNode();
+        params.put("nickname", want);
+        JsonNode resp = callApi("set_qq_profile", params, 8000);
+        if (isOk(resp)) {
+            selfNickname = want;
+            System.out.println("[QQ] ✔ 机器人昵称已改为「" + want + "」");
+        } else {
+            System.out.println("[QQ] ✗ 改昵称失败: " + (resp == null ? "无回执（未连接/超时）" : resp.toString()));
+        }
+        return resp;
+    }
+
+    /** 改自己在某个群的群名片（群昵称）；设置的是机器人自己 */
+    public JsonNode setSelfGroupCard(long groupId, String card) {
+        if (groupId <= 0 || card == null || card.trim().isEmpty()) return null;
+        long self = config.getSelfId();
+        if (self <= 0) return null;
+        ObjectNode params = M.createObjectNode();
+        params.put("group_id", groupId);
+        params.put("user_id", self);
+        params.put("card", card.trim());
+        JsonNode resp = callApi("set_group_card", params, 8000);
+        if (isOk(resp)) {
+            System.out.println("[QQ] ✔ 群 " + groupId + " 的群名片已改为「" + card.trim() + "」");
+        } else {
+            System.out.println("[QQ] ✗ 改群名片失败: " + (resp == null ? "无回执（未连接/超时）" : resp.toString()));
+        }
+        return resp;
+    }
+
+    /** NapCat 回执是否成功（retcode=0 或 status=ok） */
+    public static boolean isOk(JsonNode resp) {
+        if (resp == null) return false;
+        if (resp.path("retcode").asInt(-1) == 0) return true;
+        return "ok".equalsIgnoreCase(resp.path("status").asText(""));
+    }
+
+    /** 当前 NapCat 报上来的昵称（没连上时可能为空） */
+    public String getSelfNickname() {
+        return selfNickname;
+    }
+
+    /**
+     * 按配置把昵称改成 {@code qq.nickname} —— <b>只有不一样才改</b>。
+     *
+     * <p>所以每次重启/重连都调它也不会反复改名：改成功一次之后，
+     * 下一次 {@code get_login_info} 报上来的就是新名字，这里直接返回。
+     */
+    private void applyDesiredNickname() {
+        String want = config.getNickname();
+        if (want.isEmpty()) return;                 // 没配就不碰
+        if (want.equals(selfNickname)) {
+            System.out.println("[QQ] 昵称已是「" + want + "」，不用改");
+            return;
+        }
+        // 老版本 NapCat 可能不认 set_qq_profile：失败 3 次就不再重试（免得每次重连都刷一遍）
+        if (nickRenameFails.get() >= 3) return;
+        System.out.println("[QQ] 昵称不一致（现在是「" + selfNickname + "」→ 目标「" + want + "」），改一次");
+        if (!isOk(setProfileNickname(want))) {
+            int n = nickRenameFails.incrementAndGet();
+            if (n >= 3) {
+                System.out.println("[QQ] 改名连续失败 " + n + " 次，先不再尝试："
+                        + "手动在 QQ 里改，或用 /nick card 新名字 只改群名片");
+            }
+        } else {
+            nickRenameFails.set(0);
+        }
+    }
+
 
     /**
      * 群消息发送（P0 唯一出口）。

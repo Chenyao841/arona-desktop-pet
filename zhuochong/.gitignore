@@ -31,3 +31,5 @@ build/
 
 ### VS Code ###
 .vscode/
+# QQ 机器人图片留底（默认目录；云端建议用 ZC_QQ_IMAGE_DIR 指到仓库外）
+qq_images/

@@ -66,6 +66,12 @@ public class QqEventRouter {
     @Autowired
     private QqImageCache imageCache;
 
+    @Autowired
+    private QqParrotService parrot;
+
+    @Autowired
+    private QqDefendService defend;
+
     /** 冷却表：key = "群号_QQ号"，value = 上次响应时间戳 */
     private final Map<String, Long> lastReplyAt = new ConcurrentHashMap<>();
 
@@ -217,6 +223,7 @@ public class QqEventRouter {
         boolean atMe = false;
         StringBuilder body = new StringBuilder();
         List<String> imageUrls = new ArrayList<>();
+        java.util.Set<Long> atAdminQqs = new java.util.HashSet<>(); // 本消息 @ 到的 QQ（护短用）
         String rawMessage = ev.path("raw_message").asText("");
         JsonNode message = ev.get("message");
         if (message != null && message.isArray()) {
@@ -231,6 +238,11 @@ public class QqEventRouter {
                         } else if (!qq.isEmpty() && !"all".equals(qq)) {
                             String name = data.path("name").asText(qq);
                             body.append('@').append(name).append(' ');
+                            // 记下 @ 到了谁：护短功能要判断"有没有 @ 管理员"
+                            try {
+                                atAdminQqs.add(Long.parseLong(qq));
+                            } catch (NumberFormatException ignored) {
+                            }
                         }
                         break;
                     }
@@ -276,6 +288,12 @@ public class QqEventRouter {
         if (nickname.trim().isEmpty()) nickname = "QQ" + userId;
         long messageId = parseMessageId(ev);
 
+        // 管理员在这个群说过话 → 记下他用的昵称/群名片，供"昵称 + 调侃语气"这条护短触发路径
+        try {
+            defend.rememberAdminNick(groupId, userId, nickname);
+        } catch (Exception ignored) {
+        }
+
         // ===== 图片和 @ 常常是两条消息：先发图、再 @ 机器人 =====
         // 纯图且没有 @ 的消息本来会被忽略（没做 P2 闲置响应），这里把图缓存 2 分钟，
         // 同一个人随后 @ 机器人时自动带上——否则模型只看到"只 @ 了你，没说话"。
@@ -295,6 +313,27 @@ public class QqEventRouter {
 
         if (!atMe && !config.isTriggerAll()) {
             ignoredCount.incrementAndGet();
+            String plain = body.toString().trim().replaceAll("\\s{2,}", " ");
+            // ★ 主动接话之一：护短（管理员被群友调侃 → 调 AI 反驳，自带冷却/小时上限）
+            if (!state.disabled && !state.isMuted()
+                    && !(blacklist.isBanned(userId) && !adminService.isAdmin(userId))) {
+                try {
+                    defend.onGroupMessage(groupId, userId, nickname, plain, atAdminQqs, messageId);
+                } catch (Exception e) {
+                    System.out.println("[QQ] 护短异常: " + e);
+                }
+            }
+            // ★ 主动接话之二：跟风复读机（纯代码、不调 AI、不 @ 人）
+            //   同一句话被不同人重复到门槛后按概率复读；群被静音/关闭、或人在黑名单时不复读。
+            if (!state.disabled && !state.isMuted()
+                    && !(blacklist.isBanned(userId) && !adminService.isAdmin(userId))) {
+                try {
+                    parrot.onGroupMessage(groupId, userId, body.toString());
+                    parrot.pruneIfNeeded();
+                } catch (Exception e) {
+                    System.out.println("[QQ] 复读机异常: " + e);
+                }
+            }
             return; // 只响应 @ 自己
         }
 

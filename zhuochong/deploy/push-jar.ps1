@@ -6,6 +6,10 @@
 #   powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -NoRestart      # 只上传，不重启（线上仍旧版本）
 #   powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -SkipPull       # 不拉 git，直接用仓库现有代码
 #   powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -SetupKey       # 首次：生成并安装 SSH 公钥（之后免密）
+#   powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -NickVersion 0.0.7
+#                                             # 顺带改机器人 QQ 名（自动拼成「阿罗娜（v0.0.7测试）」）
+#   powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -Nick "随便什么名字"
+#                                             # 要完全自定义名字就用 -Nick（注意中文要过 cmd，用 .bat 转发更稳）
 #
 # 为什么从 zhuochong-github 构建：那个目录才是真正的 git 仓库，
 # git pull 之后「构建的代码 == GitHub 上的代码」，不会误把本地工作区的半成品打进去。
@@ -21,7 +25,11 @@ param(
     [string]$Service    = "zhuochong-qq",
     [switch]$NoRestart,
     [switch]$SkipPull,
-    [switch]$SetupKey
+    [switch]$SetupKey,
+    [string]$Nick       = "",
+    [string]$NickVersion = "",
+    [string]$NickTemplate = "阿罗娜（v{v}测试）",
+    [string]$EnvFile    = "/root/zc-secrets/env.qq"
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,12 +87,18 @@ if (-not (Test-Path (Join-Path $ProjDir "pom.xml"))) { Die "找不到 $ProjDir\p
 if (Test-Path $Jar) { Remove-Item $Jar -Force }
 Push-Location $ProjDir
 try {
-    & .\mvnw.cmd -B -Pcloud -DskipTests package
+    # 必须带 clean：-Pcloud 只是"不复制"重资源，target\classes 里上一次普通构建留下的
+    # 2GB 静态文件不会被删掉，照样会被打进 jar（踩过一次，打出 2.0GB 的包）
+    & .\mvnw.cmd -B -Pcloud -DskipTests clean package
     if ($LASTEXITCODE -ne 0) { Die "构建失败（看上面 [ERROR] 那几行）" }
 } finally { Pop-Location }
 if (-not (Test-Path $Jar)) { Die "构建完成但没找到 $Jar" }
 $mb = [math]::Round((Get-Item $Jar).Length / 1MB, 1)
 Ok "jar 就绪：$mb MB"
+if ($mb -gt 120) {
+    Warn "$Jar 有 $mb MB，比预期（约 35 MB）大很多：多半是 target\classes 里还留着桌宠重资源"
+    Warn "已强制 clean 过就不再是这个问题；若仍偏大，检查 pom 的 cloud profile 排除项"
+}
 
 # ---------- 3) 上传 ----------
 Step "3/5" "上传到 ${Target}:$RemoteDir/zhuochong.jar.new"
@@ -96,6 +110,27 @@ if ($LASTEXITCODE -ne 0) { Die "ssh 连接失败" }
 & scp $Jar "${Target}:$RemoteDir/zhuochong.jar.new"
 if ($LASTEXITCODE -ne 0) { Die "scp 上传失败" }
 Ok "上传完成"
+
+# ---------- 3.5) 可选：改机器人 QQ 名（版本号） ----------
+# 做法：把 ZC_QQ_NICKNAME 写进服务器上的 env 文件，紧接着的重启就会让应用调一次
+# set_qq_profile（和当前昵称一样就不动，所以重复执行安全）。
+# 中文/全角括号/引号一律 base64 传输，避免 ssh + PowerShell 的编码与转义坑。
+# 版本号简写：名字在脚本里拼（中文不过 cmd 命令行，避免编码问题）
+if ($NickVersion) {
+    $Nick = $NickTemplate.Replace("{v}", $NickVersion)
+    if (-not $Nick) { $Nick = "阿罗娜（v$NickVersion测试）" }
+}
+if ($Nick) {
+    Step "3.5/5" "把机器人 QQ 名写进环境变量 → $Nick"
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("ZC_QQ_NICKNAME=$Nick`n"))
+    $nickCmd = "echo $b64 | base64 -d > /tmp/zc_nick.env && touch $EnvFile && " +
+               "(grep -v '^ZC_QQ_NICKNAME=' $EnvFile > /tmp/zc_env.new || true) && " +
+               "cat /tmp/zc_nick.env >> /tmp/zc_env.new && cat /tmp/zc_env.new > $EnvFile && " +
+               "rm -f /tmp/zc_nick.env /tmp/zc_env.new && grep '^ZC_QQ_NICKNAME=' $EnvFile"
+    $nickOut = & ssh $Target $nickCmd 2>&1
+    if ($LASTEXITCODE -ne 0) { Warn "写 env 失败（本次只发布不改名）：$nickOut" }
+    else { Ok "env 已更新：$($nickOut -join ' ')" }
+}
 
 # ---------- 4) 切换 + 重启 ----------
 Step "4/5" "切换 jar 并重启 $Service"

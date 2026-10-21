@@ -67,6 +67,15 @@ public class QqAdminService {
     private QqReplyQueue replyQueue;
 
     @Autowired
+    private QqImageStore imageStore;
+
+    @Autowired
+    private QqParrotService parrot;
+
+    @Autowired
+    private QqDefendService defend;
+
+    @Autowired
     private com.cy.mapper.AiPromptMapper aiPromptMapper;
 
     @Autowired
@@ -141,6 +150,11 @@ public class QqAdminService {
             case "style": case "语料":
             case "note": case "笔记": case "记住这条":
             case "notes": case "记忆": case "记忆列表":
+            case "parrot": case "复读": case "复读机":
+                return true;
+            case "defend": case "护短": case "护犊子":
+                return true;
+            case "nick": case "名字": case "昵称": case "改名":
                 return true;
             default:
                 return false;
@@ -237,6 +251,14 @@ public class QqAdminService {
 
             case "style": case "语料":
                 return styleReport();
+
+            case "parrot": case "复读": case "复读机":
+                return parrotReport(parts);
+
+            case "defend": case "护短": case "护犊子":
+                return defendReport(parts, fromGroup);
+            case "nick": case "名字": case "昵称": case "改名":
+                return nickCommand(parts, fromGroup);
 
             case "note": case "笔记": case "记住这条":
                 // /note <内容>            钉一条长期记忆（永久保留）
@@ -447,6 +469,165 @@ public class QqAdminService {
                 + "· 语料本身请在管理页「基础设置/风格语料」维护（QQ 里不支持批量编辑）";
     }
 
+    /** 跟风复读机：概况 + 运行时调整（纯代码实现，不消耗 token） */
+    private String parrotReport(String[] parts) {
+        if (parts.length >= 2) {
+            String sub = parts[1].toLowerCase();
+            if ("on".equals(sub) || "开".equals(sub)) {
+                tuning.setParrotEnabled(true);
+                return "跟风复读机已开启（概率 " + tuning.parrotProbability() + "%）";
+            }
+            if ("off".equals(sub) || "关".equals(sub)) {
+                tuning.setParrotEnabled(false);
+                return "跟风复读机已关闭";
+            }
+            if ("prob".equals(sub) || "概率".equals(sub)) {
+                if (parts.length < 3) return "当前概率 " + tuning.parrotProbability() + "%\n用法：/parrot prob 33";
+                int p = (int) parseLong(parts[2], -1);
+                if (p < 0 || p > 100) return "概率范围 0~100，例：/parrot prob 33";
+                tuning.setParrotProbability(p);
+                return "复读概率已设为 " + p + "%（0 = 永不复读，100 = 必复读）";
+            }
+            return "用法：/parrot [on|off|prob <0-100>]";
+        }
+        return "【跟风复读机】" + (tuning.parrotEnabled() ? "开启" : "关闭")
+                + "，概率 " + tuning.parrotProbability() + "%\n"
+                + "规则：同一句话被 " + config.getParrotMinUsers() + " 个不同人重复 → 按概率复读一次；"
+                + "没中就等下一个不同人再判定；同一句复读过就不再复读\n"
+                + "冷却：复读成功后跳过 " + config.getParrotCooldownTriggers() + " 次触发机会\n"
+                + "窗口：" + config.getParrotWindowSec() + "s 内算重复；安全阀 " + config.getParrotMaxPerHour()
+                + " 次/小时；超过 " + config.getParrotMaxChars() + " 字不参与\n"
+                + "跟踪中的句子：" + parrot.trackingCount() + "\n"
+                + "调整：/parrot on|off、/parrot prob 33";
+    }
+
+    /** 护短：概况 + 运行时开关（触发时才调 AI，默认每人 3 次冷却、每小时 5 次上限） */
+    private String defendReport(String[] parts, long fromGroup) {
+        if (parts.length >= 2) {
+            String sub = parts[1].toLowerCase();
+            if ("on".equals(sub) || "开".equals(sub)) {
+                tuning.setDefendEnabled(true);
+                return "护短已开启：群友调侃管理员时会站出来反驳";
+            }
+            if ("off".equals(sub) || "关".equals(sub)) {
+                tuning.setDefendEnabled(false);
+                return "护短已关闭（不会再主动反驳）";
+            }
+            if ("keywords".equals(sub) || "关键词".equals(sub)) {
+                return "当前调侃关键词：" + String.join("、", config.getDefendKeywords());
+            }
+            if ("alias".equals(sub) || "别名".equals(sub) || "叫法".equals(sub) || "称呼".equals(sub)
+                    || "昵称".equals(sub)) {
+                return aliasCommand(parts);
+            }
+            if ("mock".equals(sub) || "引申".equals(sub) || "引申词".equals(sub)) {
+                return "当前引申调侃词（管理员刚发过言才算）："
+                        + String.join("、", config.getDefendMockWords())
+                        + "\n上下文窗口：" + config.getDefendContextSec() + "s"
+                        + "\n改这两个用环境变量 ZC_QQ_DEFEND_MOCK / ZC_QQ_DEFEND_CONTEXT_SEC";
+            }
+            return "用法：/defend [on|off|keywords|alias <叫法…>|mock]";
+        }
+        StringBuilder sb = new StringBuilder("【护短】");
+        sb.append(tuning.defendEnabled() ? "开启" : "关闭");
+        sb.append("\n触发：① @管理员 + 调侃词  ② 叫了管理员的名字 + 调侃语气"
+                + "  ③ 引申词（羊肉/烤羊…）+ 管理员刚发过言");
+        sb.append("\n管理员的叫法：").append(joinOr(tuning.defendAliases(), "（没配）"));
+        sb.append("\n引申调侃词：").append(joinOr(config.getDefendMockWords(), "（没配）"))
+                .append("（上下文 ").append(config.getDefendContextSec()).append("s 内有效）");
+        sb.append("\n冷却：护短一次后跳过 ").append(config.getDefendCooldownTriggers()).append(" 次触发机会");
+        sb.append("\n安全阀：每群每小时最多 ").append(config.getDefendMaxPerHour()).append(" 次（要调 AI，防烧钱）");
+        sb.append("\n调侃关键词：").append(String.join("、", config.getDefendKeywords()));
+        if (fromGroup > 0) {
+            sb.append("\n本群状态：冷却剩 ").append(defend.cooldownOf(fromGroup))
+                    .append(" 次，这一小时已护短 ").append(defend.defendedLastHour(fromGroup)).append(" 次");
+            java.util.Set<String> nicks = defend.knownAdminNicks(fromGroup);
+            sb.append("\n本群自动记住的管理员群名片：")
+                    .append(nicks.isEmpty() ? "（还没有，管理员在本群说句话就会记下）" : String.join("、", nicks));
+            long ago = defend.adminSpokeAgoSec(fromGroup);
+            sb.append("\n管理员上次发言：")
+                    .append(ago < 0 ? "还没在这个群说过话" : ago + "s 前")
+                    .append(defend.adminSpokeWithin(fromGroup) ? "（引申词判定生效中）" : "");
+        }
+        sb.append("\n调整：/defend on|off、/defend alias 小羊羔,小羊、/defend keywords");
+        return sb.toString();
+    }
+
+    /** /defend alias <叫法…>：改「群友怎么叫管理员才算提到他」 */
+    private String aliasCommand(String[] parts) {
+        if (parts.length < 3) {
+            return "当前管理员叫法：" + joinOr(tuning.defendAliases(), "（没配）")
+                    + "\n自动登记的群名片也会算（管理员在本群说话就记下）"
+                    + "\n用法：/defend alias 小羊羔,小羊   （逗号分隔，留空或 reset 恢复配置）";
+        }
+        String raw = rest(parts, 2);
+        if ("reset".equalsIgnoreCase(raw) || "重置".equals(raw) || "clear".equalsIgnoreCase(raw)) {
+            tuning.setDefendAliases(null);
+            return "管理员叫法已恢复配置文件："
+                    + joinOr(config.getDefendAdminAlias(), "（空）");
+        }
+        java.util.Set<String> set = new java.util.LinkedHashSet<>();
+        for (String s : raw.split("[,，、\\s]+")) {
+            String w = s.trim();
+            if (w.length() >= 2) set.add(w);
+        }
+        if (set.isEmpty()) return "至少给一个 2 字以上的叫法，例：/defend alias 小羊羔,小羊";
+        tuning.setDefendAliases(set);
+        return "管理员叫法已改为：" + String.join("、", set)
+                + "\n（这些词出现在消息里就算在说管理员，配上调侃词/语气才护短）"
+                + "\n重启会回到配置文件；要永久生效就写进 env.qq：ZC_QQ_DEFEND_ALIAS=" + String.join(",", set);
+    }
+
+    private static String joinOr(java.util.Set<String> set, String empty) {
+        return set == null || set.isEmpty() ? empty : String.join("、", set);
+    }
+
+    /**
+     * 改机器人自己的名字（版本号）。
+     *
+     * <pre>
+     * /nick                         看现在的 QQ 名 + 配置里要改成什么
+     * /nick 阿罗娜（v0.0.7测试）      立刻改 QQ 昵称（NapCat set_qq_profile）
+     * /nick card 阿罗娜（v0.0.7测试）  只改「当前这个群」里我的群名片
+     * </pre>
+     *
+     * 注意：改 QQ 昵称会写进账号资料，不是"仅本次生效"；重启后由 {@code ZC_QQ_NICKNAME}
+     * 再对一次（一样就不动，所以不会反复改）。
+     */
+    private String nickCommand(String[] parts, long fromGroup) {
+        if (parts.length < 2) {
+            String cur = client.getSelfNickname();
+            String want = config.getNickname();
+            return "【机器人名字】\n当前 QQ 名：" + (cur.isEmpty() ? "（还没拿到，等连上 NapCat）" : cur)
+                    + "\n配置目标（ZC_QQ_NICKNAME）：" + (want.isEmpty() ? "（未设置，不会自动改）" : want)
+                    + (want.isEmpty() || cur.isEmpty() ? "" : (want.equals(cur) ? "\n状态：一致 ✓" : "\n状态：不一致，重启会改一次"))
+                    + "\n\n改法：\n/nick 阿罗娜（v0.0.7测试）       改 QQ 昵称（立刻生效）"
+                    + "\n/nick card 阿罗娜（v0.0.7测试）  只改本群群名片"
+                    + "\n上传时也可以带一句：push-jar.ps1 -Nick \"阿罗娜（v0.0.7测试）\"";
+        }
+        String sub = parts[1].toLowerCase();
+        if ("card".equals(sub) || "群名片".equals(sub) || "本群".equals(sub)) {
+            if (fromGroup <= 0) return "群名片只能在群里改：在群里发 /nick card 新名字";
+            String name = rest(parts, 2);
+            if (name.isEmpty()) return "用法：/nick card 阿罗娜（v0.0.7测试）";
+            com.fasterxml.jackson.databind.JsonNode r = client.setSelfGroupCard(fromGroup, name);
+            return com.cy.qq.NapCatWsClient.isOk(r)
+                    ? "本群群名片已改为「" + name + "」"
+                    : "改群名片失败：" + (r == null ? "没连上 NapCat" : r.toString())
+                    + "\n（有些群不允许机器人改自己的名片，那就只能改 QQ 名）";
+        }
+        String name = rest(parts, 1);
+        if (name.isEmpty()) return "用法：/nick 阿罗娜（v0.0.7测试）";
+        com.fasterxml.jackson.databind.JsonNode r = client.setProfileNickname(name);
+        if (!com.cy.qq.NapCatWsClient.isOk(r)) {
+            return "改昵称失败：" + (r == null ? "没连上 NapCat" : r.toString())
+                    + "\n如果 NapCat 版本不认 set_qq_profile，就手动在 QQ 里改，"
+                    + "改完 /nick 会显示当前名字";
+        }
+        return "已改名为「" + name + "」\n（群里的旧消息不会变，新消息用新名字）"
+                + "\n要让重启后保持一致，把 env.qq 里的 ZC_QQ_NICKNAME 也改成这个";
+    }
+
     private static String rest(String[] parts, int from) {
         if (parts.length <= from) return "";
         return String.join(" ", java.util.Arrays.copyOfRange(parts, from, parts.length)).trim();
@@ -480,13 +661,18 @@ public class QqAdminService {
                 + "\n/prompt [show|set|add] <system|function> 查看/修改人设提示词"
                 + "\n/style 风格语料概况（QQ 是否注入）"
                 + "\n/note <内容> 钉一条长期记忆；/notes 查看；/note del <id> 删除"
+                + "\n/parrot [on|off|prob 33] 跟风复读机（同句 3 人 → 按概率复读）"
+                + "\n/defend [on|off|alias 小羊羔,小羊|keywords] 护短（群友调侃管理员时站出来反驳）"
+                + "\n/nick [新名字|card 新名字] 改机器人 QQ 名 / 本群群名片（版本号用）"
                 + "\n（只有管理员 QQ 能用；私聊除指令外可以直接和我聊天）";
     }
 
     private String status() {
         StringBuilder sb = new StringBuilder("【运行状态】\n");
         sb.append("连接：").append(client.isConnected() ? "在线 ✓" : "离线 ✗").append('\n');
-        sb.append("自身 QQ：").append(config.getSelfId() <= 0 ? "未识别" : String.valueOf(config.getSelfId())).append('\n');
+        sb.append("自身 QQ：").append(config.getSelfId() <= 0 ? "未识别" : String.valueOf(config.getSelfId()))
+                .append("（名字：").append(client.getSelfNickname().isEmpty() ? "未知" : client.getSelfNickname())
+                .append("）").append('\n');
         sb.append("触发方式：").append(config.getTriggerMode())
                 .append("（同一人 ").append(config.getPerUserCooldownSec()).append("s 冷却）\n");
         sb.append("运行时长：").append(runtime.getUptimeMinutes()).append(" 分钟\n");
@@ -503,7 +689,14 @@ public class QqAdminService {
                 .append("，引用：").append(tuning.quoteReply() ? "开" : "关").append('\n');
         sb.append("排队中回复：").append(replyQueue.getPendingCount())
                 .append(" 条（车道 ").append(replyQueue.getLaneCount()).append(" 个）\n");
+        sb.append("主动接话：复读机 ").append(tuning.parrotEnabled() ? "开" : "关")
+                .append("（概率 ").append(tuning.parrotProbability()).append("%），护短 ")
+                .append(tuning.defendEnabled() ? "开" : "关")
+                .append("（冷却 ").append(config.getDefendCooldownTriggers()).append(" 次触发，上限 ")
+                .append(config.getDefendMaxPerHour()).append(" 次/时）\n");
         sb.append("黑名单：").append(blacklist.size()).append(" 人\n");
+        sb.append("图片留底：").append(imageStore.totalCount()).append(" 张（")
+                .append(Math.round(imageStore.totalBytes() / 1024.0)).append(" KB）\n");
         sb.append("表情包：").append(tuning.emojiEnabled() ? "开" : "关")
                 .append("（强情绪 + 隔 ").append(tuning.emojiMinGap()).append(" 条回复）\n");
         sb.append("记忆隔离：").append(config.getMemoryScope()).append("（").append(memoryHint()).append("）");
@@ -529,6 +722,7 @@ public class QqAdminService {
             sb.append("  消息 ").append(g.messageCount.get()).append(" / 回复 ").append(g.replyCount.get());
             sb.append("  最后活动 ").append(QqRuntimeState.ago(g.lastMessageAt));
             sb.append("  今日 ").append(todayByGroup.getOrDefault(g.groupId, 0L)).append(" tokens");
+            sb.append("  图片留底 ").append(imageStore.count(QqImageStore.sessionKey(false, g.groupId))).append(" 张");
             if (g.disabled) sb.append("  【已关闭】");
             if (g.isMuted()) sb.append("  【静音中】");
             sb.append('\n');

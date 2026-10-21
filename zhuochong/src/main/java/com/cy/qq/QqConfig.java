@@ -118,9 +118,105 @@ public class QqConfig {
     @Value("${qq.image-reread-max:2}")
     private int imageRereadMax;
 
+    /** 图片留底目录（落盘；重启后编号仍可重读） */
+    @Value("${qq.image-store-dir:qq_images}")
+    private String imageStoreDir;
+
+    /** 单个群最多留几张图（超出时删最早的） */
+    @Value("${qq.image-max-per-group:500}")
+    private int imageMaxPerGroup;
+
+    /** 私聊（管理员 QQ）每人最多留几张图 */
+    @Value("${qq.image-max-per-user:500}")
+    private int imageMaxPerUser;
+
+    /** 全局兜底上限（所有会话加起来的张数），防止群很多时磁盘被吃光 */
+    @Value("${qq.image-max-total:3000}")
+    private int imageMaxTotal;
+
+    /** 留底有效期（小时），过期自动清理 */
+    @Value("${qq.image-ttl-hours:24}")
+    private int imageTtlHours;
+
+    /** 跟风复读机总开关（纯代码，不花 token） */
+    @Value("${qq.parrot-enabled:true}")
+    private boolean parrotEnabled;
+
+    /** 复读概率（%）：同一句话被 N 个不同人重复后，每次触发按这个概率决定复不复读 */
+    @Value("${qq.parrot-probability:33}")
+    private int parrotProbability;
+
+    /** 需要多少个"不同用户"重复同一句话才算触发 */
+    @Value("${qq.parrot-min-users:3}")
+    private int parrotMinUsers;
+
+    /** 重复统计窗口（秒）：超过窗口的重复不计数 */
+    @Value("${qq.parrot-window-sec:180}")
+    private int parrotWindowSec;
+
+    /** 复读成功后，接下来还要跳过几次触发机会（冷却次数） */
+    @Value("${qq.parrot-cooldown-triggers:1}")
+    private int parrotCooldownTriggers;
+
+    /** 每组每小时最多复读几次（0 = 不限，安全阀防刷屏） */
+    @Value("${qq.parrot-max-per-hour:3}")
+    private int parrotMaxPerHour;
+
+    /** 参与复读的句子最长字数（太长的不复读） */
+    @Value("${qq.parrot-max-chars:60}")
+    private int parrotMaxChars;
+
+    /** 护短功能总开关：群友调侃管理员时出来反驳（调 AI） */
+    @Value("${qq.defend-enabled:true}")
+    private boolean defendEnabled;
+
+    /** 护短一次后，接下来还要跳过几次触发机会（默认 3 次） */
+    @Value("${qq.defend-cooldown-triggers:3}")
+    private int defendCooldownTriggers;
+
+    /** 每组每小时最多护短几次（护短要调模型，防烧钱；0 = 不限） */
+    @Value("${qq.defend-max-per-hour:5}")
+    private int defendMaxPerHour;
+
+    /** 调侃性关键词（逗号分隔）：@了管理员 或 提到管理员昵称 + 命中这些词 → 触发护短 */
+    @Value("${qq.defend-keywords:菜,菜鸡,菜鸟,笨蛋,傻瓜,憨,鸽,又鸽,摸鱼,划水,偷懒,摆烂,躺平,辣鸡,垃圾,废物,不行,拉胯}")
+    private String defendKeywords;
+
+    /**
+     * 管理员的称呼（逗号分隔）：群里怎么叫管理员就算"提到他"。
+     *
+     * <p>为什么单独配：护短主要认**群昵称/群名片**（比如「小羊羔」），而不是 QQ 名。
+     * 群名片机器人会自己记（管理员在群里说一句话就登记），这里配的是**额外**叫法，
+     * 让"还没见他发过言的群"也能认出来。`/defend alias 小羊羔,小羊` 可运行时改。
+     */
+    @Value("${qq.defend-admin-alias:小羊羔,小羊}")
+    private String defendAdminAlias;
+
+    /**
+     * 引申调侃词（逗号分隔）：这些词单独出现**不算**调侃，
+     * 但如果管理员刚刚在群里发过言（{@code defend-context-sec} 之内），就当作在说他。
+     *
+     * <p>典型场景：管理员叫「小羊羔」，群友说「今晚想吃烤羊」——名字没提，但上下文指向他。
+     */
+    @Value("${qq.defend-mock-words:羊肉,烤羊,涮羊肉,羊肉串,羊排,全羊,羊蝎子}")
+    private String defendMockWords;
+
+    /** 上下文窗口（秒）：管理员最近一次发言在这个时间内，引申调侃词才算"在说他" */
+    @Value("${qq.defend-context-sec:180}")
+    private int defendContextSec;
+
     /** 发送失败重试次数 */
     @Value("${qq.send-retry:1}")
     private int sendRetry;
+
+    /**
+     * 机器人在 QQ 里的显示名（带版本号用，例如「阿罗娜（v0.0.7测试）」）。
+     *
+     * <p>连上 NapCat 后会和当前昵称比一次：**不一样才改一次**（{@code set_qq_profile}），
+     * 一样就什么都不做。留空 = 不动昵称，只保持现状。
+     */
+    @Value("${qq.nickname:}")
+    private String nickname;
 
     /** 管理员 QQ（逗号分隔）：只有这些人能私聊机器人、能用管理指令（P3） */
     @Value("${qq.admin-qq:}")
@@ -299,8 +395,103 @@ public class QqConfig {
         return Math.max(1, imageRereadMax);
     }
 
+    public String getImageStoreDir() {
+        return (imageStoreDir == null || imageStoreDir.trim().isEmpty()) ? "qq_images" : imageStoreDir.trim();
+    }
+
+    public int getImageMaxPerGroup() {
+        return Math.max(1, imageMaxPerGroup);
+    }
+
+    public int getImageMaxPerUser() {
+        return Math.max(1, imageMaxPerUser);
+    }
+
+    public int getImageMaxTotal() {
+        return Math.max(1, imageMaxTotal);
+    }
+
+    public int getImageTtlHours() {
+        return Math.max(1, imageTtlHours);
+    }
+
+    public boolean isParrotEnabled() {
+        return parrotEnabled;
+    }
+
+    public int getParrotProbability() {
+        return parrotProbability;
+    }
+
+    public int getParrotMinUsers() {
+        return parrotMinUsers;
+    }
+
+    public int getParrotWindowSec() {
+        return parrotWindowSec;
+    }
+
+    public int getParrotCooldownTriggers() {
+        return parrotCooldownTriggers;
+    }
+
+    public int getParrotMaxPerHour() {
+        return parrotMaxPerHour;
+    }
+
+    public int getParrotMaxChars() {
+        return Math.max(4, parrotMaxChars);
+    }
+
+    public boolean isDefendEnabled() {
+        return defendEnabled;
+    }
+
+    public int getDefendCooldownTriggers() {
+        return Math.max(0, defendCooldownTriggers);
+    }
+
+    public int getDefendMaxPerHour() {
+        return defendMaxPerHour;
+    }
+
+    public Set<String> getDefendKeywords() {
+        return splitWords(defendKeywords);
+    }
+
+    /** 管理员的额外叫法（群昵称以外的） */
+    public Set<String> getDefendAdminAlias() {
+        return splitWords(defendAdminAlias);
+    }
+
+    /** 引申调侃词：单独出现不算，管理员刚发过言才算 */
+    public Set<String> getDefendMockWords() {
+        return splitWords(defendMockWords);
+    }
+
+    /** 上下文窗口（秒） */
+    public int getDefendContextSec() {
+        return Math.max(0, defendContextSec);
+    }
+
+    /** 逗号/空白分隔的词表 → 集合（保持顺序、去空、去重） */
+    private static Set<String> splitWords(String raw) {
+        Set<String> out = new LinkedHashSet<>();
+        if (raw == null || raw.trim().isEmpty()) return out;
+        for (String s : raw.split("[,，\\s]+")) {
+            String t = s.trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
+    }
+
     public int getSendRetry() {
         return Math.max(0, sendRetry);
+    }
+
+    /** 机器人 QQ 名（要改成什么）；空 = 不动 */
+    public String getNickname() {
+        return nickname == null ? "" : nickname.trim();
     }
 
     /** 管理员 QQ 集合；空集合 = 没有任何管理员（管理指令全部失效、私聊一律不接待） */

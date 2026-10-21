@@ -18,12 +18,18 @@
 set -uo pipefail
 
 NO_GIT=0
-for arg in "$@"; do
+NICK=""
+while [ $# -gt 0 ]; do
+  arg="$1"
   case "$arg" in
     --no-git|--nogit) NO_GIT=1 ;;
+    --nick) shift; NICK="${1:-}"; [ -n "$NICK" ] || die "--nick 后面要跟名字，例：--nick \"阿罗娜（v0.0.7测试）\"" ;;
+    --nick=*) NICK="${arg#--nick=}" ;;
+    --nick-version) shift; NICK="阿罗娜（v${1:-}测试）" ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "未知参数：$arg（支持 --no-git）"; exit 2 ;;
+    *) echo "未知参数：$arg（支持 --no-git / --nick 名字 / --nick-version 0.0.7）"; exit 2 ;;
   esac
+  shift
 done
 
 REPO_DIR="${ZC_REPO_DIR:-/root/arona}"
@@ -119,6 +125,25 @@ if ! systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE}\.service"; the
   warn "jar 已就位：$JAR"
   warn "装服务：cp $PROJ_DIR/deploy/zhuochong-qq.service /etc/systemd/system/ ; systemctl daemon-reload ; systemctl enable --now $SERVICE"
   exit 0
+fi
+
+# ---------- 6.5) 可选：改机器人 QQ 名（版本号）----------
+# 只改服务器上的 env 文件；紧接着的重启会让应用在连上 NapCat 后调一次 set_qq_profile
+# （名字和现在一样就不动，所以重复执行是安全的）
+ENV_FILE="${ZC_ENV_FILE:-/root/zc-secrets/env.qq}"
+if [ -n "$NICK" ]; then
+  log "把机器人 QQ 名写进 $ENV_FILE：$NICK"
+  mkdir -p "$(dirname "$ENV_FILE")"
+  touch "$ENV_FILE"
+  tmp="$(mktemp)"
+  grep -v '^ZC_QQ_NICKNAME=' "$ENV_FILE" > "$tmp" || true
+  # 不包引号：qq-bot-start.sh 是按行 KEY=VALUE 直接 export 的（不会去引号），
+  # 带引号会让昵称里真的出现引号
+  printf 'ZC_QQ_NICKNAME=%s\n' "$NICK" >> "$tmp"
+  cat "$tmp" > "$ENV_FILE"
+  chmod 600 "$ENV_FILE" 2>/dev/null || true
+  rm -f "$tmp"
+  ok "env 已更新（重启后自动改一次）"
 fi
 
 log "重启 $SERVICE ..."

@@ -27,6 +27,13 @@ public class QqReplyService {
     private final Random random = new Random();
 
     /**
+     * 记下「自己刚说过什么」，供复读机判断"别复读自己的话"。
+     * 叶子组件（不依赖其它 Bean），放在这里不会和 QqParrotService 形成循环依赖。
+     */
+    @Autowired
+    private QqBotReplyMemory botReplyMemory;
+
+    /**
      * 把一条回复按规则切段后发到群里。
      *
      * @return 实际发送成功的条数（0 = 没发出去 / 空文本）
@@ -58,7 +65,11 @@ public class QqReplyService {
             if (i > 0) sleepBetweenChunks();
             // 只有第一段引用原消息，避免多段回复刷出一堆引用框
             long quote = (i == 0) ? replyToMessageId : 0L;
-            if (sendTextWithRetry(groupId, chunks.get(i), quote)) ok++;
+            if (sendTextWithRetry(groupId, chunks.get(i), quote)) {
+                ok++;
+                // 记一笔：这句是我自己说的，之后群里刷这句就别跟风复读
+                botReplyMemory.remember(groupId, chunks.get(i));
+            }
         }
         if (chunks.size() > 1) {
             System.out.println("[QQ] 本次回复分段 " + chunks.size() + " 条，成功 " + ok + " 条");

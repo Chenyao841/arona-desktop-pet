@@ -59,7 +59,7 @@ public class QqChatService {
     private QqRuntimeState runtime;
 
     @Autowired
-    private QqImageMemory imageMemory;
+    private QqImageStore imageStore;
 
     /** 首次看图的提示词（客观描述，限 90 字） */
     private static final String IMAGE_PROMPT =
@@ -81,7 +81,7 @@ public class QqChatService {
         String speaker = (nickname == null || nickname.trim().isEmpty()) ? ("QQ" + userId) : nickname.trim();
         usage.beginGroup(groupId);
         try {
-            String sessionKey = QqImageMemory.sessionKey(false, groupId);
+            String sessionKey = QqImageStore.sessionKey(false, groupId);
             String vision = describeImages(sessionKey, imageUrls);
             String reread = rereadIfAsked(sessionKey, text, imageUrls);
             String userMessage = buildUserMessage(groupId, userId, speaker, text, vision, imageUrls, fromAdmin);
@@ -110,7 +110,7 @@ public class QqChatService {
         // 私聊的消耗记在负数群号下：不计入"群排行"，但仍算进每日额度
         usage.beginGroup(-userId);
         try {
-            String sessionKey = QqImageMemory.sessionKey(true, userId);
+            String sessionKey = QqImageStore.sessionKey(true, userId);
             String vision = describeImages(sessionKey, imageUrls);
             String reread = rereadIfAsked(sessionKey, text, imageUrls);
             boolean hasImage = imageUrls != null && !imageUrls.isEmpty();
@@ -166,6 +166,47 @@ public class QqChatService {
         memoryService.afterMessage(targetId, userId);
     }
 
+    /**
+     * 复读机发送：原样把一句话发到群里。
+     * 不带引用、不发表情、不写记忆计数（就是"跟着复读"一下，不参与对话上下文）。
+     */
+    public void deliverEcho(long groupId, String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        replyService.reply(groupId, text.trim(), 0L);
+    }
+
+    /**
+     * 护短：群友调侃管理员时站出来反驳。
+     *
+     * <p>走 {@code userOperation=qq_chat_defend}，DeepSeekService 里会追加专门的护短提示词
+     * （护犊子但不真生气、一两句话、不人身攻击）。
+     */
+    public QqOutcome thinkDefend(long groupId, long adminQq, String attackerNick,
+                                 long attackerQq, String teasingText) {
+        usage.beginGroup(groupId);
+        try {
+            String userMessage = "[QQ群 " + groupId + "] 群友「" + attackerNick + "」（QQ " + attackerQq
+                    + "）在调侃你的管理员，原话是：「" + teasingText + "」";
+            DeepSeekService.AiResult r = deepSeekService.chat(
+                    userMessage, "（群友调侃管理员：" + abbrev40(teasingText) + "）",
+                    groupSessionId(groupId), "qq_chat_defend", null, false,
+                    memoryService.characterFor(groupId, attackerQq));
+            String out = (r != null && r.boat_text != null) ? r.boat_text.trim() : "";
+            if (out.isEmpty()) out = "喂喂，说我管理员坏话的先过我这关！";
+            return new QqOutcome(out, r == null ? null : r.emotion);
+        } catch (Exception e) {
+            System.out.println("[QQ] 护短调模型失败: " + e);
+            return new QqOutcome("喂喂，说我管理员坏话的先过我这关！", null, true);
+        } finally {
+            usage.end();
+        }
+    }
+
+    private static String abbrev40(String t) {
+        if (t == null) return "";
+        return t.length() > 40 ? t.substring(0, 40) + "…" : t;
+    }
+
     /** 会话维度：整群一个 */
     public static String groupSessionId(long groupId) {
         return "qq_g" + groupId;
@@ -207,7 +248,7 @@ public class QqChatService {
                 if (p == null) continue;
                 String desc = imageService.describePrepared(p, IMAGE_PROMPT);
                 // 无论有没有描述成功都留底：有描述能立刻用，没描述也还能在追问时重读
-                int tag = imageMemory.remember(sessionKey, p, desc);
+                int tag = imageStore.save(sessionKey, p, desc);
                 if (desc != null && !desc.isEmpty()) {
                     seen++;
                     sb.append(seen == 1 ? "" : "；").append("第").append(seen).append("张〔图#")
@@ -240,32 +281,32 @@ public class QqChatService {
         boolean mentionsImage = t.matches("(?s).*(图|照片|相片|截图|表情包|那张|这张|上面那|刚才那|#\\d+).*");
         if (!mentionsImage) return "";
 
-        List<QqImageMemory.Stored> picks = new ArrayList<>();
+        List<QqImageStore.Meta> picks = new ArrayList<>();
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("#(\\d+)").matcher(t);
         if (m.find()) {
             try {
-                QqImageMemory.Stored s = imageMemory.byId(sessionKey, Integer.parseInt(m.group(1)));
+                QqImageStore.Meta s = imageStore.meta(sessionKey, Integer.parseInt(m.group(1)));
                 if (s != null) picks.add(s);
             } catch (Exception ignored) {
             }
         }
-        if (picks.isEmpty()) picks.addAll(imageMemory.recent(sessionKey, config.getImageRereadMax()));
+        if (picks.isEmpty()) picks.addAll(imageStore.recent(sessionKey, config.getImageRereadMax()));
         if (picks.isEmpty()) return "";
 
         StringBuilder out = new StringBuilder("〔你重新看了之前那张图，这次是按对方的问题去看的〕\n");
         String ask = "对方现在问的是：「" + t + "」。请针对这个问题观察这张图，"
                 + "只回答图里确实看得到的内容（颜色、文字、姿势、物品等），看不到就说看不到。120 字以内。";
-        for (QqImageMemory.Stored s : picks) {
+        for (QqImageStore.Meta s : picks) {
             String desc;
             try {
-                desc = imageService.describePrepared(new QqImageService.Prepared(s.base64, s.mime), ask);
+                desc = imageService.describePrepared(imageStore.load(sessionKey, s), ask);
             } catch (Throwable th) {
                 System.out.println("[QQ] 重读图片异常: " + th);
                 continue;
             }
             if (desc == null || desc.isEmpty()) continue;
             out.append("· 图#").append(s.id);
-            if (s.firstDesc != null && !s.firstDesc.isEmpty()) out.append("（首次看到的是：").append(s.firstDesc).append("）");
+            if (s.desc != null && !s.desc.isEmpty()) out.append("（首次看到的是：").append(s.desc).append("）");
             out.append(" → 这次细看：").append(desc).append('\n');
             System.out.println("[QQ] 重读〔图#" + s.id + "〕: " + (desc.length() > 100 ? desc.substring(0, 100) + "…" : desc));
         }

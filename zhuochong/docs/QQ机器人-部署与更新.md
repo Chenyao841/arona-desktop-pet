@@ -233,6 +233,42 @@ $env:ZC_QQ_WS_TOKEN='testtoken'; $env:ZC_QQ_SELF_ID='0'; $env:ZC_QQ_ADMIN_QQ='55
 - **密钥永远不进仓库**：`.env.qq`、`notes.txt`、`bili_cookie`、`api_key` 只在服务器 `/root/zc-secrets/`。
 - 只在服务器上跑 `update.sh`，**不在服务器上手改代码**（`update.sh` 用 `reset --hard`，手改会被覆盖）。
 
+### 9.1 发版时顺带改「机器人 QQ 名」（版本号）
+
+机器人现在的显示名带版本，例如 `阿罗娜（v0.0.6测试）`。改名有两条路，都写好了：
+
+**A. 发布时一起改（推荐）**
+
+```powershell
+# 本地：自动拼成 阿罗娜（v0.0.7测试），写进服务器 env，重启后应用连上 NapCat 自己改一次
+powershell -ExecutionPolicy Bypass -File deploy\push-jar.ps1 -NickVersion 0.0.7
+
+# 名字想完全自定义（中文要过 cmd，建议用 .bat 转发）：
+deploy\发布到服务器.bat -Nick "阿罗娜（v0.0.7测试）"
+```
+
+```bash
+# 服务器走 git 拉取那条路时：
+bash /root/arona/zhuochong/deploy/update.sh --nick-version 0.0.7
+bash /root/arona/zhuochong/deploy/update.sh --nick "阿罗娜（v0.0.7测试）"
+```
+
+**B. 不发版，临时改**
+
+```
+/nick                       看当前 QQ 名 + 配置里要改成什么
+/nick 阿罗娜（v0.0.7测试）    立刻改（NapCat set_qq_profile）
+/nick card 阿罗娜（v0.0.7测试） 只改本群群名片
+```
+
+**机制**：配置项 `ZC_QQ_NICKNAME`（→ `qq.nickname`）。连上 NapCat 拿到 `get_login_info` 的
+当前昵称后**比一次**：不一样才调一次 `set_qq_profile`，一样就什么都不做。
+所以重启/重连都不会反复改名；改名失败（老版本 NapCat 不认这个 action）会打日志，
+连续失败 3 次就停下不再试，这时用 `/nick card`（`set_group_card`，兼容性更好）。
+
+> 注意：群里**显示的是群名片优先**——想让版本号在某个群显眼，`/nick card` 更稳；
+> 想全局都变，才需要改 QQ 名。
+
 ## 十、常见问题
 
 | 现象 | 原因 / 处理 |
@@ -242,4 +278,5 @@ $env:ZC_QQ_WS_TOKEN='testtoken'; $env:ZC_QQ_SELF_ID='0'; $env:ZC_QQ_ADMIN_QQ='55
 | 构建卡在下载依赖 | 给 Maven 配阿里云镜像（`~/.m2/settings.xml`），或改用 `push-jar.ps1` 本地打包上传 |
 | jar 特别大（>1GB） | 用了本地打包但没加 `-Pcloud` |
 | `sync-to-repo.ps1` 说没有变化 | 改动还没保存，或同步路径参数不对 |
+| 改了 `ZC_QQ_NICKNAME` 但 QQ 名没变 | 看日志有没有 `set_qq_profile` 的 retcode：老版本 NapCat 可能不支持该 action → 用 `/nick card 新名字` 改群名片（群里显示的就是群名片），或手动在 QQ 里改一次 |
 | 服务器 `git pull` 冲突 | `update.sh` 用 `reset --hard origin/main`，本地改动会被丢弃；要保留就先 commit/stash |

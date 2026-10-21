@@ -114,6 +114,53 @@ public class QqReplyQueue {
         return lanes.size();
     }
 
+    /**
+     * 复读机专用：把一段话原样发到群里（不延迟、不等 AI）。
+     *
+     * <p>用独立车道（{@code PARROT_LANE_BASE + 群号}），不会排在某条 AI 回复后面干等几秒
+     * —— 跟风复读本来就该是"立刻接上"的；同时也不会和 AI 的多段回复交错。
+     */
+    public void submitEcho(long groupId, String text) {
+        if (text == null || text.isEmpty()) return;
+        lane(PARROT_LANE_BASE + groupId).execute(() -> {
+            try {
+                chatService.deliverEcho(groupId, text);
+            } catch (Exception e) {
+                System.out.println("[QQ] 复读发送失败: " + e);
+            }
+        });
+    }
+
+    /**
+     * 护短专用：先等固定延迟，再调模型生成反驳，然后引用调侃那句发出去。
+     *
+     * <p>用独立车道（{@code DEFEND_LANE_BASE + 群号}），不参与"同人去抖/拉黑"那套
+     * —— 护短的触发者不是发消息给机器人的人，不该被算进 burst 计数。
+     */
+    public void submitDefend(long groupId, long messageId, Supplier<QqOutcome> thinker) {
+        // 思考立刻开始（和群回复同一套：想得再快也不早于固定延迟发出去）
+        CompletableFuture<QqOutcome> ai = CompletableFuture.supplyAsync(thinker, thinkers);
+        lane(DEFEND_LANE_BASE + groupId).execute(() -> {
+            long deadline = System.currentTimeMillis() + Math.max(0, tuning.replyDelaySec()) * 1000L;
+            try {
+                long wait = deadline - System.currentTimeMillis();
+                if (wait > 0) Thread.sleep(wait);
+                QqOutcome out = ai.get(AI_WAIT_MAX_MS, TimeUnit.MILLISECONDS);
+                if (out == null) return;
+                chatService.deliver(false, groupId, 0L, out, messageId);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                System.out.println("[QQ] 护短回复失败: " + e);
+            }
+        });
+    }
+
+    /** 护短车道基数 */
+    private static final long DEFEND_LANE_BASE = -2_000_000_000_000L;
+    /** 复读车道基数：和群号 / 私聊（-QQ号）区分开，避免撞键 */
+    private static final long PARROT_LANE_BASE = -1_000_000_000_000L;
+
     // ===== 内部编排 =====
 
     private void submit(String key, long laneKey, boolean privateChat, long groupId, long userId,

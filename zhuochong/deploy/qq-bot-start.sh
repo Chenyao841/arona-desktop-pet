@@ -32,8 +32,14 @@ if [ -f "$ENV_FILE" ]; then
             continue
             ;;
         esac
+        # 顺手去掉一层包裹的引号（有人习惯写 KEY='值'，这里不 source，所以得自己剥）
+        case "$val" in
+          \'*\') val="${val#\'}"; val="${val%\'}" ;;
+          \"*\") val="${val#\"}"; val="${val%\"}" ;;
+        esac
         export "$key=$val"
         ;;
+
       *)
         echo "[qq-bot][warn] $ENV_FILE 里有不合法的行，已跳过：$line" >&2
         ;;

@@ -45,6 +45,10 @@ const log = (...a) => console.log('[' + ts() + ']', ...a);
 const received = [];
 const stickers = [];
 const privates = [];
+// 自有昵称（get_login_info 报给后端；set_qq_profile 会改它，模拟"改名成功"）
+let selfNick = process.env.FAKE_SELF_NICK || '阿罗娜（v0.0.6测试）';
+const profileCalls = [];
+const cardCalls = [];
 
 // 测试用图片：直接吐一张本地表情 PNG，供后端的「下载 → 缩放 → 视觉理解」链路使用
 const path = require('path');
@@ -142,7 +146,7 @@ function onApi(socket, msg) {
   const { action, echo, params } = msg;
   if (action === 'get_login_info') {
     log('← get_login_info（客户端来问自己是谁）');
-    reply(socket, echo, { user_id: SELF, nickname: '阿罗娜小号' });
+    reply(socket, echo, { user_id: SELF, nickname: selfNick });
     return;
   }
   if (action === 'get_status') {
@@ -153,6 +157,26 @@ function onApi(socket, msg) {
   if (action === 'get_group_info') {
     log('← get_group_info（问群名）');
     reply(socket, echo, { group_id: params.group_id, group_name: '测试群', member_count: 3 });
+    return;
+  }
+  if (action === 'set_qq_profile') {
+    const nn = (params && params.nickname) || '';
+    profileCalls.push(nn);
+    log('← set_qq_profile nickname=' + JSON.stringify(nn) + '（旧名 ' + JSON.stringify(selfNick) + '）');
+    if (!nn) {
+      sendText(socket, JSON.stringify({ status: 'failed', retcode: 100, data: null, echo }));
+      return;
+    }
+    selfNick = nn;
+    log('✓ 昵称已改为 ' + JSON.stringify(selfNick) + '（再 get_login_info 会返回新名字）');
+    reply(socket, echo, {});
+    return;
+  }
+  if (action === 'set_group_card') {
+    cardCalls.push({ group: params.group_id, user: params.user_id, card: params.card });
+    log('← set_group_card 群=' + params.group_id + ' QQ=' + params.user_id
+      + ' card=' + JSON.stringify(params.card));
+    reply(socket, echo, {});
     return;
   }
   if (action === 'send_private_msg') {
@@ -234,6 +258,10 @@ function schedule(socket) {
     received.forEach((r, i) => log('  群文字#' + (i + 1) + (r.quote ? '（引用 ' + r.quote + '）' : '') + ' ' + JSON.stringify(r.text)));
     stickers.forEach((kb, i) => log('  表情#' + (i + 1) + ' base64≈' + kb + 'KB'));
     privates.forEach((t, i) => log('  私聊#' + (i + 1) + ' ' + JSON.stringify(t)));
+    if (profileCalls.length) log('  改昵称请求：' + profileCalls.map((n) => JSON.stringify(n)).join(' → ')
+      + '（最终 ' + JSON.stringify(selfNick) + '）');
+    if (cardCalls.length) log('  改群名片请求：' + cardCalls.length + ' 次，最后一次 '
+      + JSON.stringify(cardCalls[cardCalls.length - 1]));
   }, 20000);
 }
 function pushPrivate(socket, { user, nick, text, id }) {
