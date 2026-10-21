@@ -1,6 +1,7 @@
 package com.cy.qq;
 
 import com.cy.pojo.Result;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,10 +48,16 @@ public class QqStatusController {
     private QqUsageService usageService;
 
     @GetMapping("/qq/status")
-    public Result status() {
+    public Result status(HttpServletRequest request) {
+        boolean local = com.cy.config.PublicAccessFilter.isLoopback(request.getRemoteAddr());
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("enabled", config.isEnabled());
         m.put("connected", client.isConnected());
+        if (!local) {
+            // 公网只给"活没活着"：这个接口曾经把机器人 QQ 号、token 用量、群列表全吐出去
+            m.put("publicView", true);
+            return Result.success(m);
+        }
         m.put("wsUrl", config.maskWsUrl());
         m.put("selfId", config.getSelfId());
         m.put("triggerMode", config.getTriggerMode());

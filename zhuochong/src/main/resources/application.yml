@@ -50,6 +50,10 @@ qq:
   # 机器人在 QQ 里的显示名（放版本号用，例如 阿罗娜（v0.0.7测试））。
   # 连上 NapCat 后和当前昵称比一次：不一样才调 set_qq_profile 改一次；一样什么都不做；留空 = 完全不动
   nickname: ${ZC_QQ_NICKNAME:}
+  # 公网入口闸门：非本机请求只放行下面这些前缀（小游戏页面+健康检查），其余一律 401。
+  # 桌宠那套接口（/talk、/ai/**、*.html）历史上无鉴权，靠这条守住；true 可整体关掉（只在排障时用）
+  public-open: ${ZC_QQ_PUBLIC_OPEN:false}
+  public-paths: ${ZC_QQ_PUBLIC_PATHS:/qq_pic,/qq/status}
   trigger-mode: ${ZC_QQ_TRIGGER_MODE:at}   # at（只理 @）/ all（全量，风控风险高）
   per-user-cooldown-sec: ${ZC_QQ_USER_COOLDOWN:60}
   group-whitelist: ${ZC_QQ_GROUP_WHITELIST:}  # 逗号分隔，空=不限
