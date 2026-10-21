@@ -33,6 +33,23 @@ public class QqPicWebController {
     @Autowired
     private QqPicCommands commands;
 
+    /**
+     * 画板页面本体。
+     *
+     * <p>为什么不用静态目录的"欢迎页"：Spring Boot 只会把 classpath 根下的 index.html 当欢迎页，
+     * {@code static/qq_pic/index.html} 对 {@code /qq_pic/} 不会自动生效（Spring 6 起尾斜杠也不再自动匹配），
+     * 所以这里显式把文件吐出来，`/qq_pic` 和 `/qq_pic/` 都认。
+     */
+    @GetMapping({"", "/"})
+    public void page(jakarta.servlet.http.HttpServletResponse res) throws java.io.IOException {
+        res.setContentType("text/html;charset=UTF-8");
+        res.setHeader("Cache-Control", "no-store");
+        org.springframework.core.io.ClassPathResource html =
+                new org.springframework.core.io.ClassPathResource("static/qq_pic/index.html");
+        try (java.io.InputStream in = html.getInputStream()) {
+            in.transferTo(res.getOutputStream());
+        }
+    }
     /** 页面轮询：题目、难度、轮次、已猜清单、是否已结束 */
     @GetMapping("/api/state")
     public Result state(@RequestParam String t) {
