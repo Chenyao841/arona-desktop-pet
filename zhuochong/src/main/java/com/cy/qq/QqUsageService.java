@@ -42,11 +42,18 @@ public class QqUsageService implements DeepSeekService.UsageListener {
 
     /** 当前线程正在服务哪个群（0 = 桌宠端 / 无上下文） */
     private final ThreadLocal<Long> currentGroup = new ThreadLocal<>();
+    /** 当前线程这次调用是不是小游戏产生的（true → 记进 kind='pic' 的独立额度桶） */
+    private final ThreadLocal<Boolean> picContext = new ThreadLocal<>();
 
     /** 今日已用（本地累加，避免每条消息都查库；启动时从库里读一次） */
     private final AtomicLong todayTokens = new AtomicLong();
+    /** 今日小游戏独立额度用量（与日常对话互不影响） */
+    private final AtomicLong picTodayTokens = new AtomicLong();
+    private final AtomicLong picTodayCalls = new AtomicLong();
     /** 管理指令在运行时改的额度（0 = 不限；-1 = 未设置，用配置默认值） */
     private volatile long runtimeLimit = -1;
+    /** 管理指令在运行时改的【游戏】额度（-1 = 用配置） */
+    private volatile long runtimePicLimit = -1;
     private final AtomicLong totalCalls = new AtomicLong();
     private final AtomicLong todayCalls = new AtomicLong();
     private volatile String today = "";
@@ -60,8 +67,12 @@ public class QqUsageService implements DeepSeekService.UsageListener {
             today = todayStr();
             long t = mapper.todayQqTokens();
             todayTokens.set(t);
+            long pt = mapper.todayPicTokens();
+            picTodayTokens.set(pt);
             System.out.println("[QQ] token 用量表就绪，今日已用 " + t + " tokens"
-                    + (limit() > 0 ? "，限额 " + limit() : "，未设限额"));
+                    + (limit() > 0 ? "，限额 " + limit() : "，未设限额")
+                    + "；小游戏单独计：今日已用 " + pt + " tokens"
+                    + (picLimit() > 0 ? "，限额 " + picLimit() : "，未设限额"));
         } catch (Exception e) {
             System.out.println("[QQ] token 用量表初始化失败（额度功能不可用）: " + e.getMessage());
         }
@@ -73,16 +84,25 @@ public class QqUsageService implements DeepSeekService.UsageListener {
         currentGroup.set(groupId);
     }
 
+    /** 小游戏调用前调用：这次用量记进 kind='pic'，并算进"游戏额度"（不影响日常额度） */
+    public void beginPic(long chatId) {
+        currentGroup.set(chatId);
+        picContext.set(Boolean.TRUE);
+    }
+
     public void end() {
         currentGroup.remove();
+        picContext.remove();
     }
 
     @Override
     public void onUsage(String kind, String model, int promptTokens, int completionTokens) {
         Long g = currentGroup.get();
         long groupId = (g == null ? 0L : g);
+        boolean pic = Boolean.TRUE.equals(picContext.get());
+        String k = pic ? "pic" : (kind == null ? "chat" : kind);
         try {
-            mapper.add(groupId, kind == null ? "chat" : kind, promptTokens, completionTokens);
+            mapper.add(groupId, k, promptTokens, completionTokens);
         } catch (Exception e) {
             System.out.println("[QQ] 用量入库失败: " + e.getMessage());
         }
@@ -90,7 +110,14 @@ public class QqUsageService implements DeepSeekService.UsageListener {
         int used = promptTokens + completionTokens;
         totalCalls.incrementAndGet();
         processTokens.addAndGet(used);
-        if (groupId != 0) {
+        if (pic) {
+            // 小游戏只算游戏额度，不占日常对话额度
+            picTodayCalls.incrementAndGet();
+            long now = picTodayTokens.addAndGet(used);
+            if (picLimit() > 0 && now > picLimit()) {
+                System.out.println("[QQ] ⚠ 今日游戏 token 已超限：" + now + " / " + picLimit());
+            }
+        } else if (groupId != 0) {
             todayCalls.incrementAndGet();
             long now = todayTokens.addAndGet(used);
             checkQuotaAlerts(now);
@@ -144,6 +171,8 @@ public class QqUsageService implements DeepSeekService.UsageListener {
             today = t;
             todayTokens.set(0);
             todayCalls.set(0);
+            picTodayTokens.set(0);
+            picTodayCalls.set(0);
             alertsSent.clear(); // 跨天重置报警，新的一天重新提醒
         }
     }
@@ -185,6 +214,36 @@ public class QqUsageService implements DeepSeekService.UsageListener {
     public void resetTodayCounter() {
         todayTokens.set(0);
         todayCalls.set(0);
+    }
+
+    // ===== 小游戏独立额度 =====
+
+    /** 生效中的游戏每日上限（0 = 不限） */
+    public long picLimit() {
+        long rt = runtimePicLimit;
+        return rt >= 0 ? rt : Math.max(0, config.getPicDailyTokenLimit());
+    }
+
+    public boolean isPicQuotaExceeded() {
+        long lim = picLimit();
+        rolloverIfNeeded();
+        return lim > 0 && picTodayTokens.get() >= lim;
+    }
+
+    public long getPicTodayTokens() {
+        rolloverIfNeeded();
+        return picTodayTokens.get();
+    }
+
+    public long getPicTodayCalls() {
+        rolloverIfNeeded();
+        return picTodayCalls.get();
+    }
+
+    /** 运行时改游戏额度（管理指令 /游戏 额度）；0 = 不限 */
+    public void setPicLimit(long value) {
+        runtimePicLimit = Math.max(0, value);
+        System.out.println("[QQ] 游戏每日 token 额度已改为 " + (runtimePicLimit == 0 ? "不限" : runtimePicLimit));
     }
 
     // ===== 报表（管理指令用） =====

@@ -383,6 +383,82 @@ public class NapCatWsClient {
         return resp;
     }
 
+    /**
+     * 一条消息里塞「图片 + @某人 + 文字」（小游戏提交回执用）。
+     *
+     * <p>为什么要一条而不是三条：需求是"绘制结果图片 + @该用户 + 猜测结果"在同一个气泡里，
+     * 分开发会变成三条消息刷屏。
+     *
+     * @param imageBase64 画稿（不含 data: 前缀；null/空 = 不带图）
+     * @param atQq        要 @ 的 QQ（0 = 不 @）
+     */
+    public boolean sendGroupSegments(long groupId, String imageBase64, long atQq, String text, long replyToMessageId) {
+        if ((imageBase64 == null || imageBase64.isEmpty()) && (text == null || text.isEmpty())) return false;
+        ObjectNode params = M.createObjectNode();
+        params.put("group_id", groupId);
+        ArrayNode arr = params.putArray("message");
+        if (replyToMessageId > 0) {
+            ObjectNode reply = M.createObjectNode();
+            reply.put("type", "reply");
+            reply.putObject("data").put("id", String.valueOf(replyToMessageId));
+            arr.add(reply);
+        }
+        if (imageBase64 != null && !imageBase64.isEmpty()) {
+            ObjectNode img = M.createObjectNode();
+            img.put("type", "image");
+            img.putObject("data").put("file", "base64://" + imageBase64);
+            arr.add(img);
+        }
+        if (atQq > 0) {
+            ObjectNode at = M.createObjectNode();
+            at.put("type", "at");
+            at.putObject("data").put("qq", String.valueOf(atQq));
+            arr.add(at);
+        }
+        if (text != null && !text.isEmpty()) {
+            ObjectNode seg = M.createObjectNode();
+            seg.put("type", "text");
+            seg.putObject("data").put("text", " " + text);
+            arr.add(seg);
+        }
+        JsonNode resp = callApi("send_group_msg", params, 20000);
+        boolean ok = isOk(resp);
+        if (ok) {
+            sentCount.incrementAndGet();
+            System.out.println("[QQ] → 群 " + groupId + "（画稿+@" + atQq + "）: " + head(text));
+        } else {
+            sendFailCount.incrementAndGet();
+            System.out.println("[QQ] ✗ 群 " + groupId + " 画稿+@ 发送失败: " + (resp == null ? "无回执" : resp.toString()));
+        }
+        return ok;
+    }
+
+    /** 私聊版（图片 + 文字）：小游戏自测用 */
+    public boolean sendPrivateSegments(long userId, String imageBase64, String text) {
+        if ((imageBase64 == null || imageBase64.isEmpty()) && (text == null || text.isEmpty())) return false;
+        ObjectNode params = M.createObjectNode();
+        params.put("user_id", userId);
+        ArrayNode arr = params.putArray("message");
+        if (imageBase64 != null && !imageBase64.isEmpty()) {
+            ObjectNode img = M.createObjectNode();
+            img.put("type", "image");
+            img.putObject("data").put("file", "base64://" + imageBase64);
+            arr.add(img);
+        }
+        if (text != null && !text.isEmpty()) {
+            ObjectNode seg = M.createObjectNode();
+            seg.put("type", "text");
+            seg.putObject("data").put("text", text);
+            arr.add(seg);
+        }
+        JsonNode resp = callApi("send_private_msg", params, 20000);
+        boolean ok = isOk(resp);
+        if (!ok) {
+            System.out.println("[QQ] ✗ 私聊 " + userId + " 画稿+文 发送失败: " + (resp == null ? "无回执" : resp.toString()));
+        }
+        return ok;
+    }
+
     /** NapCat 回执是否成功（retcode=0 或 status=ok） */
     public static boolean isOk(JsonNode resp) {
         if (resp == null) return false;

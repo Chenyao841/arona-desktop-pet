@@ -1,5 +1,6 @@
 package com.cy.qq;
 
+import com.cy.qq.game.QqPicCommands;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,6 +72,9 @@ public class QqEventRouter {
 
     @Autowired
     private QqDefendService defend;
+
+    @Autowired
+    private com.cy.qq.game.QqPicCommands picCommands;
 
     /** 冷却表：key = "群号_QQ号"，value = 上次响应时间戳 */
     private final Map<String, Long> lastReplyAt = new ConcurrentHashMap<>();
@@ -168,6 +172,12 @@ public class QqEventRouter {
             return;
         }
 
+        // 0) 小游戏（私聊 = 管理员自测通道）：指令/数字回执直接接走
+        try {
+            if (picCommands.tryHandle("private", userId, userId, nickname, raw, messageId)) return;
+        } catch (Exception e) {
+            System.out.println("[QQ] 小游戏指令异常（私聊）: " + e);
+        }
         // 1) 管理指令：立刻执行（管理员要求"快捷调整"，不能等 3s）
         String reply = adminService.tryHandle(raw, 0L, userId);
         if (reply != null) {
@@ -294,7 +304,19 @@ public class QqEventRouter {
         } catch (Exception ignored) {
         }
 
-        // ===== 图片和 @ 常常是两条消息：先发图、再 @ 机器人 =====
+        // ===== 小游戏（你画我猜）：群里免 @，只有指令/数字回执会被认领 =====
+        //   放在图片缓存之前：游戏指令不带图，先让它有机会接走，别被"带图缓存"或 AI 链路吞掉
+        try {
+            if (picCommands.tryHandle("group", groupId, userId, nickname, body.toString(), messageId)) {
+                handledCount.incrementAndGet();
+                state.replyCount.incrementAndGet();
+                return;
+            }
+        } catch (Exception e) {
+            System.out.println("[QQ] 小游戏指令异常: " + e);
+        }
+
+
         // 纯图且没有 @ 的消息本来会被忽略（没做 P2 闲置响应），这里把图缓存 2 分钟，
         // 同一个人随后 @ 机器人时自动带上——否则模型只看到"只 @ 了你，没说话"。
         if (!imageUrls.isEmpty() && !atMe) {

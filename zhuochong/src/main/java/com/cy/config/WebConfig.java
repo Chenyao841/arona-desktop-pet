@@ -43,6 +43,9 @@ public class WebConfig implements WebMvcConfigurer {
                         "/桌宠桌面版.html",
                         "/桌宠设置.html",
                         "/你画我猜.html",
+                        // 小游戏绘图页：靠 URL 里的 token 鉴权，必须对公网开放（群友要能点开）
+                        "/qq_pic",
+                        "/qq_pic/**",
                         "/音乐播放器.html",
                         "/桌宠live2d测试.html",
                         "/桌宠标注.html",

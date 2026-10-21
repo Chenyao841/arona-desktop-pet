@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>你画我猜 · 画板</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#12161f;color:#e9eef7;
+    font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif}
+  #app{display:flex;flex-direction:column;height:100%;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+
+  /* 顶部：题目 + 进度 */
+  #top{padding:8px 12px 6px;background:#1b2130;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:5}
+  #title{font-size:15px;color:#9fb0c9;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  #word{font-size:30px;font-weight:800;letter-spacing:4px;text-align:center;margin:4px 0 2px;
+    color:#ffd76b;text-shadow:0 2px 10px rgba(255,215,107,.25)}
+  #meta{font-size:12px;color:#8b9bb4;text-align:center}
+  #guessList{font-size:12px;color:#7f8ea6;margin-top:4px;max-height:34px;overflow:hidden;text-align:center}
+
+  /* 画布区 */
+  #stage{flex:1;position:relative;padding:8px;min-height:0}
+  #wrap{position:relative;width:100%;height:100%;background:#fff;border-radius:12px;overflow:hidden;
+    box-shadow:0 4px 20px rgba(0,0,0,.45)}
+  canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+
+  /* 工具条 */
+  #tools{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#1b2130;overflow-x:auto}
+  .dot{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid #33405a}
+  .dot.on{border-color:#ffd76b;transform:scale(1.12)}
+  .size{flex:0 0 auto;border:1px solid #33405a;background:#232b3d;color:#cfd8e6;border-radius:8px;
+    padding:5px 9px;font-size:12px}
+  .size.on{background:#33405a;border-color:#ffd76b;color:#ffd76b}
+  .sp{flex:1}
+  .btn{border:0;border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;color:#12161f}
+  .btn:disabled{opacity:.45}
+  #btnSend{background:#ffd76b;flex:1}
+  #btnGive{background:#2a3346;color:#9fb0c9;font-weight:500}
+  #foot{display:flex;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:#161c28}
+
+  /* 结束遮罩 */
+  #over{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(9,12,18,.86);backdrop-filter:blur(3px);z-index:20;text-align:center;padding:20px}
+  #over.on{display:flex}
+  #overTitle{font-size:22px;font-weight:800;color:#ffd76b;margin-bottom:8px}
+  #overAns{font-size:16px;color:#cfd8e6;margin-bottom:6px}
+  #overTip{font-size:13px;color:#8b9bb4;line-height:1.7}
+
+  #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:rgba(20,26,38,.95);
+    color:#e9eef7;font-size:13px;padding:8px 14px;border-radius:20px;opacity:0;transition:opacity .25s;
+    pointer-events:none;z-index:50;max-width:86vw;text-align:center}
+  #toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div id="title">
+      <span id="diff">难度：--</span>
+      <span id="timer">--</span>
+    </div>
+    <div id="word">加载中…</div>
+    <div id="meta">第 0 轮</div>
+    <div id="guessList"></div>
+  </div>
+
+  <div id="stage">
+    <div id="wrap">
+      <canvas id="cv"></canvas>
+      <div id="over">
+        <div id="overTitle">本局结束</div>
+        <div id="overAns"></div>
+        <div id="overTip"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tools">
+    <span class="dot on" data-c="#111111" style="background:#111111"></span>
+    <span class="dot" data-c="#e23b3b" style="background:#e23b3b"></span>
+    <span class="dot" data-c="#2f7ae5" style="background:#2f7ae5"></span>
+    <span class="dot" data-c="#22a06b" style="background:#22a06b"></span>
+    <span class="dot" data-c="#f0b429" style="background:#f0b429"></span>
+    <span class="sp"></span>
+    <button class="size on" data-w="4">细</button>
+    <button class="size" data-w="10">中</button>
+    <button class="size" data-w="22">粗</button>
+    <button class="size" id="btnUndo">撤销</button>
+    <button class="size" id="btnClear">清空</button>
+  </div>
+
+  <div id="foot">
+    <button class="btn" id="btnGive">放弃</button>
+    <button class="btn" id="btnSend" disabled>画好了，让阿罗娜猜</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  var TOKEN = new URLSearchParams(location.search).get('t') || '';
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var wordEl = document.getElementById('word');
+  var diffEl = document.getElementById('diff');
+  var metaEl = document.getElementById('meta');
+  var timerEl = document.getElementById('timer');
+  var guessEl = document.getElementById('guessList');
+  var overEl = document.getElementById('over');
+  var btnSend = document.getElementById('btnSend');
+  var btnGive = document.getElementById('btnGive');
+
+  var color = '#111111', width = 4, drawing = false, dirty = false;
+  var undoStack = [], MAX_UNDO = 20;
+  var ended = false, submitted = false, info = null;
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('on');
+    clearTimeout(t._t); t._t = setTimeout(function () { t.classList.remove('on'); }, 2600);
+  }
+
+  // ===== 画布尺寸（考虑高 DPI：手机上不设会一片糊） =====
+  function fit() {
+    var r = cv.parentElement.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var img = dirty ? ctx.getImageData(0, 0, cv.width, cv.height) : null;
+    cv.width = Math.max(1, Math.round(r.width * dpr));
+    cv.height = Math.max(1, Math.round(r.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, r.width, r.height);
+    if (img) {                       // 旋转屏幕别把画丢了（尽力而为）
+      try { ctx.putImageData(img, 0, 0); } catch (e) { }
+    }
+  }
+  window.addEventListener('resize', fit);
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(cv.parentElement);
+
+  function pos(e) {
+    var r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function snapshot() {
+    try {
+      undoStack.push(ctx.getImageData(0, 0, cv.width, cv.height));
+      if (undoStack.length > MAX_UNDO) undoStack.shift();
+    } catch (e) { }
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (ended) return;
+    drawing = true; dirty = true;
+    snapshot();
+    cv.setPointerCapture(e.pointerId);
+    var p = pos(e);
+    ctx.strokeStyle = color; ctx.lineWidth = width;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.01, p.y + 0.01); ctx.stroke();
+    btnSend.disabled = false;
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!drawing || ended) return;
+    var p = pos(e);
+    ctx.lineTo(p.x, p.y); ctx.stroke();
+  });
+  function endStroke() { drawing = false; }
+  cv.addEventListener('pointerup', endStroke);
+  cv.addEventListener('pointercancel', endStroke);
+  cv.addEventListener('pointerleave', endStroke);
+
+  document.querySelectorAll('.dot').forEach(function (d) {
+    d.addEventListener('click', function () {
+      document.querySelectorAll('.dot').forEach(function (x) { x.classList.remove('on'); });
+      d.classList.add('on'); color = d.dataset.c;
+    });
+  });
+  document.querySelectorAll('.size[data-w]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.size[data-w]').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); width = parseInt(b.dataset.w, 10);
+    });
+  });
+  document.getElementById('btnUndo').addEventListener('click', function () {
+    if (ended || !undoStack.length) return;
+    var img = undoStack.pop();
+    try { ctx.putImageData(img, 0, 0); dirty = true; } catch (e) { }
+  });
+  document.getElementById('btnClear').addEventListener('click', function () {
+    if (ended) return;
+    snapshot();
+    var r = cv.parentElement.getBoundingClientRect();
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, r.width, r.height);
+    dirty = false; btnSend.disabled = true;
+  });
+
+  // ===== 提交 =====
+  btnSend.addEventListener('click', function () {
+    if (ended || !dirty) { toast('先画两笔呀～'); return; }
+    btnSend.disabled = true; submitted = true;
+    btnSend.textContent = '阿罗娜在看…';
+    var data = cv.toDataURL('image/png');
+    fetch('api/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: TOKEN, image: data })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      var d = (res && res.data) || {};
+      submitted = false;
+      if (d.ended) {
+        lock(d.answer || '', '本局结束');
+        return;
+      }
+      if (!d.ok) {
+        toast(d.reason || '这一版没提交成功，再试一次？');
+        btnSend.disabled = false;
+      } else {
+        toast('已提交，看群里的回复～');
+        // 提交成功后画布保留（下一版在原图上继续改，模型能看出改动）
+        btnSend.disabled = false;
+      }
+      btnSend.textContent = '画好了，让阿罗娜猜';
+    }).catch(function () {
+      submitted = false; btnSend.disabled = false;
+      btnSend.textContent = '画好了，让阿罗娜猜';
+      toast('网络不太好，再点一次试试');
+    });
+  });
+
+  btnGive.addEventListener('click', function () {
+    if (ended) return;
+    if (!confirm('确定放弃这一局、直接揭晓答案吗？')) return;
+    fetch('api/giveup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: TOKEN })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      var d = (res && res.data) || {};
+      lock(d.answer || '', '你放弃了这一局');
+    }).catch(function () { toast('网络不太好，再试一次'); });
+  });
+
+  // ===== 状态轮询（猜对了要立刻锁画布 + 弹提醒） =====
+  var lastRound = -1;
+  function poll() {
+    fetch('api/state?t=' + encodeURIComponent(TOKEN))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var d = (res && res.data) || {};
+        if (!d.ok) {
+          lock('', d.reason || '这一局找不到了');
+          return;
+        }
+        info = d;
+        diffEl.textContent = '难度：' + (d.difficultyName || '--');
+        wordEl.textContent = d.playing ? (d.word || '（题目加载中）') : (d.word || '—');
+        metaEl.textContent = '第 ' + d.round + ' 轮' + (d.maxRounds > 0 ? ' / 最多 ' + d.maxRounds + ' 轮' : '')
+          + (d.category ? '　类别：' + d.category : '');
+        var left = Math.max(0, (d.timeoutSec || 0) - (d.elapsedSec || 0));
+        timerEl.textContent = '剩 ' + Math.floor(left / 60) + ':' + ('0' + (left % 60)).slice(-2);
+        if (d.guesses && d.guesses.length) {
+          guessEl.textContent = '阿罗娜猜过：' + d.guesses.join('、');
+        }
+        if (d.round !== lastRound && d.round > 0) {
+          lastRound = d.round; btnSend.textContent = '画好了，让阿罗娜猜';
+        }
+        if (!d.playing) {
+          lock(d.answer || '', '阿罗娜猜中了！');    // 服务端结束了 → 锁死
+        }
+      })
+      .catch(function () { })
+      .then(function () { setTimeout(poll, ended ? 8000 : 2000); });
+  }
+
+  function lock(answer, title) {
+    if (ended) return;
+    ended = true;
+    document.getElementById('overTitle').textContent = title || '本局结束';
+    document.getElementById('overAns').textContent = answer ? ('答案：' + answer) : '';
+    document.getElementById('overTip').innerHTML =
+      '画布已锁定，不能再提交<br>回群里发 <b>3</b> 开下一局（或 <b>4</b> 结束游戏）';
+    overEl.classList.add('on');
+    btnSend.disabled = true; btnGive.disabled = true;
+    btnSend.textContent = '本局已结束';
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+  }
+
+  if (!TOKEN) { lock('', '链接不完整'); }
+  else { fit(); poll(); }
+})();
+</script>
+</body>
+</html>

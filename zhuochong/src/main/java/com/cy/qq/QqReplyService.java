@@ -105,6 +105,36 @@ public class QqReplyService {
         return ok;
     }
 
+    /**
+     * 小游戏提交回执：<b>一条消息</b>里放「画稿图片 + @绘制者 + 猜测结论」。
+     *
+     * @param imagePath 画稿文件路径（读不到就只发文字）
+     * @param atQq      要 @ 的 QQ（群聊用；私聊传 0）
+     */
+    public boolean sendDrawResult(boolean privateChat, long chatId, String imagePath, long atQq, String text) {
+        String b64 = null;
+        try {
+            if (imagePath != null) {
+                java.io.File f = new java.io.File(imagePath);
+                if (f.isFile() && f.length() > 0) {
+                    b64 = java.util.Base64.getEncoder().encodeToString(java.nio.file.Files.readAllBytes(f.toPath()));
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[QQ] 读画稿失败（改为只发文字）: " + e.getMessage());
+        }
+        sleepQuietly(randomBetween(config.getChunkDelayMinMs(), config.getChunkDelayMaxMs()));
+        int attempts = 1 + config.getSendRetry();
+        for (int i = 0; i < attempts; i++) {
+            boolean ok = privateChat
+                    ? client.sendPrivateSegments(chatId, b64, text)
+                    : client.sendGroupSegments(chatId, b64, atQq, text, 0L);
+            if (ok) return true;
+            if (i + 1 < attempts) sleepQuietly(500);
+        }
+        return false;
+    }
+
     private boolean sendTextWithRetry(long groupId, String text) {
         return sendTextWithRetry(groupId, text, 0L);
     }

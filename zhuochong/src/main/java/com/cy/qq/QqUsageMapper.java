@@ -42,10 +42,15 @@ public interface QqUsageMapper {
     int add(@Param("groupId") long groupId, @Param("kind") String kind,
             @Param("prompt") int prompt, @Param("completion") int completion);
 
-    /** 今天机器人消耗的总 token（群聊 + 管理员私聊，不含桌宠端） */
+    /** 今天机器人消耗的总 token（群聊 + 管理员私聊，不含桌宠端；**也不含小游戏**，游戏单独算） */
     @Select("SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) FROM qq_token_usage " +
-            "WHERE usage_date = CURDATE() AND group_id <> 0")
+            "WHERE usage_date = CURDATE() AND group_id <> 0 AND kind <> 'pic'")
     long todayQqTokens();
+
+    /** 今天的【小游戏】消耗（kind='pic'，与日常额度分开算） */
+    @Select("SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) FROM qq_token_usage " +
+            "WHERE usage_date = CURDATE() AND kind = 'pic'")
+    long todayPicTokens();
 
     /** 有史以来机器人消耗的总 token */
     @Select("SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) FROM qq_token_usage WHERE group_id <> 0")

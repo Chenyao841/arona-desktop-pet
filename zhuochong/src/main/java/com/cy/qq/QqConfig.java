@@ -205,6 +205,39 @@ public class QqConfig {
     @Value("${qq.defend-context-sec:180}")
     private int defendContextSec;
 
+    // ===== 小游戏：你画我猜（默认关；管理员用 /游戏 开 <群号> 指定可玩的群）=====
+
+    /** 小游戏总开关（默认 false = 群里发游戏指令也不响应） */
+    @Value("${qq.pic-enabled:false}")
+    private boolean picEnabled;
+
+    /** 每局最多提交几轮（0 = 不限；默认 20，防一局无限烧视觉调用） */
+    @Value("${qq.pic-max-rounds:20}")
+    private int picMaxRounds;
+
+    /** 每局最长几分钟（到点自动结束并公布答案） */
+    @Value("${qq.pic-timeout-min:10}")
+    private int picTimeoutMin;
+
+    /** 「更换题目」冷却（秒，按人算；管理员无限制） */
+    @Value("${qq.pic-next-cooldown-sec:60}")
+    private int picNextCooldownSec;
+
+    /** 游戏的每日 token 额度（**与日常对话分开算**，0 = 不限） */
+    @Value("${qq.pic-daily-token-limit:500000}")
+    private long picDailyTokenLimit;
+
+    /** 绘图页对外地址（拼群里的链接用），末尾不带 / */
+    @Value("${qq.pic-base-url:http://47.93.180.198:8080}")
+    private String picBaseUrl;
+
+    /** 游戏额度用完时的固定回复 */
+    @Value("${qq.pic-quota-reply:今天的画画额度用完啦，明天再来玩吧～}")
+    private String picQuotaReply;
+
+    /** 画稿存图的最长边（像素）：太大既费流量又费视觉 token */
+    @Value("${qq.pic-image-max-width:768}")
+    private int picImageMaxWidth;
     /** 发送失败重试次数 */
     @Value("${qq.send-retry:1}")
     private int sendRetry;
@@ -493,6 +526,29 @@ public class QqConfig {
     public String getNickname() {
         return nickname == null ? "" : nickname.trim();
     }
+    // ===== 小游戏 =====
+
+    public boolean isPicEnabled() { return picEnabled; }
+
+    public int getPicMaxRounds() { return Math.max(0, picMaxRounds); }
+
+    public int getPicTimeoutMin() { return Math.max(1, picTimeoutMin); }
+
+    public int getPicNextCooldownSec() { return Math.max(0, picNextCooldownSec); }
+
+    public long getPicDailyTokenLimit() { return Math.max(0, picDailyTokenLimit); }
+
+    public String getPicBaseUrl() {
+        String u = picBaseUrl == null ? "" : picBaseUrl.trim();
+        return u.endsWith("/") ? u.substring(0, u.length() - 1) : u;
+    }
+
+    public String getPicQuotaReply() {
+        return (picQuotaReply == null || picQuotaReply.trim().isEmpty())
+                ? "今天的画画额度用完啦，明天再来玩吧～" : picQuotaReply;
+    }
+
+    public int getPicImageMaxWidth() { return picImageMaxWidth <= 0 ? 768 : picImageMaxWidth; }
 
     /** 管理员 QQ 集合；空集合 = 没有任何管理员（管理指令全部失效、私聊一律不接待） */
     public Set<Long> getAdminQqs() {
