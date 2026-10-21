@@ -106,7 +106,16 @@ qq:
   defend-mock-words: ${ZC_QQ_DEFEND_MOCK:羊肉,烤羊,涮羊肉,羊肉串,羊排,全羊,羊蝎子}
   # 上下文窗口（秒）：管理员最近一次发言在这个时间内，引申调侃词才算"在说他"（0 = 关掉这条路）
   defend-context-sec: ${ZC_QQ_DEFEND_CONTEXT_SEC:180}
-  send-retry: 1                   # 发送失败重试几次（NapCat 偶发超时）
+  # ---------- 小游戏：你画我猜 ----------
+  # 总闸（紧急刹车）。注意"默认关闭"不是靠这里：而是靠【群白名单为空】——管理员用 /游戏 开 <群号> 一个个开放
+  pic-enabled: ${ZC_QQ_PIC:true}
+  pic-max-rounds: ${ZC_QQ_PIC_MAX_ROUNDS:20}          # 每局最多提交几轮（0 = 不限）
+  pic-timeout-min: ${ZC_QQ_PIC_TIMEOUT_MIN:10}        # 每局最长几分钟，到点自动揭晓答案
+  pic-next-cooldown-sec: ${ZC_QQ_PIC_NEXT_CD:60}      # 「更换题目」冷却（按人；管理员不限）
+  pic-daily-token-limit: ${ZC_QQ_PIC_DAILY_TOKENS:500000}   # 游戏额度，独立于日常对话额度（0 = 不限）
+  pic-base-url: ${ZC_QQ_PIC_BASE_URL:http://47.93.180.198:8080}   # 绘图页对外地址（拼群里链接用）
+  pic-quota-reply: ${ZC_QQ_PIC_QUOTA_REPLY:今天的画画额度用完啦，明天再来玩吧～}
+  pic-image-max-width: 768                            # 画稿缩到最长边多少像素（省流量+省视觉 token）  send-retry: 1                   # 发送失败重试几次（NapCat 偶发超时）
   # P3 管理员体系：只有这些 QQ 能私聊机器人、能用管理指令（逗号分隔，留空=没有管理员）
   admin-qq: ${ZC_QQ_ADMIN_QQ:}
   admin-only-private: ${ZC_QQ_ADMIN_ONLY_PRIVATE:true}

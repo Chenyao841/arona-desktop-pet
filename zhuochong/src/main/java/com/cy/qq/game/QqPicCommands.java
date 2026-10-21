@@ -231,6 +231,16 @@ public class QqPicCommands {
                     usage.setPicLimit(v);
                     return "游戏每日额度已设为 " + (v == 0 ? "不限" : v);
                 }
+                case "总开关": case "total": {
+                    if (parts.length < 3) {
+                        return "总开关当前：" + (service.picEnabled() ? "开" : "关")
+                                + "\n用法：/游戏 总开关 on|off（注意：总开关开着，也还要 /游戏 开 <群号> 才有群能玩）";
+                    }
+                    String v = parts[2].toLowerCase();
+                    boolean on = "on".equals(v) || "开".equals(v) || "true".equals(v) || "1".equals(v);
+                    service.setPicEnabled(on);
+                    return "小游戏总开关已" + (on ? "打开" : "关闭");
+                }
                 case "列表": case "状态":
                     return gameStatus(chatId);
                 default:

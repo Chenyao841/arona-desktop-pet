@@ -207,8 +207,8 @@ public class QqConfig {
 
     // ===== 小游戏：你画我猜（默认关；管理员用 /游戏 开 <群号> 指定可玩的群）=====
 
-    /** 小游戏总开关（默认 false = 群里发游戏指令也不响应） */
-    @Value("${qq.pic-enabled:false}")
+    /** 小游戏总闸（紧急刹车）。"默认关闭"靠群白名单为空实现，不是靠这里 */
+    @Value("${qq.pic-enabled:true}")
     private boolean picEnabled;
 
     /** 每局最多提交几轮（0 = 不限；默认 20，防一局无限烧视觉调用） */

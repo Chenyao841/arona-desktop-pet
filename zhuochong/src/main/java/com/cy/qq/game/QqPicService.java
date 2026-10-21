@@ -109,9 +109,27 @@ public class QqPicService {
     //  权限 / 开关
     // ============================================================
 
-    /** 这个群允许玩吗（管理员用 /游戏 开/关 维护名单；私聊不受限，方便自测） */
+    /** 总闸（kill switch）：配置文件默认开，运行时可以 /游戏 总开关 off 一把关掉 */
+    private volatile Boolean enabledOverride = null;
+
+    public boolean picEnabled() {
+        Boolean v = enabledOverride;
+        return v != null ? v : config.isPicEnabled();
+    }
+
+    public void setPicEnabled(boolean on) {
+        enabledOverride = on;
+        System.out.println("[你画我猜] 总开关已" + (on ? "打开" : "关闭"));
+    }
+
+    /**
+     * 这个群允许玩吗。
+     *
+     * <p>注意"默认关闭"是这么实现的：<b>群白名单为空 = 哪个群都不能玩</b>，
+     * 管理员用 {@code /游戏 开 <群号>} 一个个开放。总闸只是紧急刹车。
+     */
     public boolean groupAllowed(long groupId) {
-        if (!config.isPicEnabled()) return false;
+        if (!picEnabled()) return false;
         return mapper.isAllowed("group", groupId) > 0;
     }
 
@@ -171,8 +189,8 @@ public class QqPicService {
      * @param ownerQq  绘制者
      */
     public Out start(String chatType, long chatId, long ownerQq, String ownerNick, int difficulty) {
-        if (!config.isPicEnabled()) {
-            return Out.error("小游戏还没启用哦，让管理员先发：/游戏 开 <群号>");
+        if (!picEnabled()) {
+            return Out.error("小游戏总开关是关的（管理员发 /游戏 总开关 on 打开）");
         }
         if ("group".equals(chatType) && !groupAllowed(chatId)) {
             return Out.error("这个群还没开放小游戏，管理员发 /游戏 开 " + chatId + " 才能玩");
