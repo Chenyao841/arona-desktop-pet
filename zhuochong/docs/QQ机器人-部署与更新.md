@@ -283,6 +283,22 @@ bash /root/arona/zhuochong/deploy/update.sh --nick "阿罗娜（v0.0.7测试）"
 > 注意：群里**显示的是群名片优先**——想让版本号在某个群显眼，`/nick card` 更稳；
 > 想全局都变，才需要改 QQ 名。
 
+### 9.2 传 GitHub 失败时，按这个顺序排查
+
+现象（任一条）：`git push` / `git pull` 报 `Connection was reset`、超时、`Could not resolve host`。
+
+1. **先确认 GitHub 加速器/代理开着**——九成是这个。开着就重试一次，别急着改配置。
+2. 再看端口通不通：`Test-NetConnection github.com -Port 443`（PowerShell）。
+3. 报 `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS`：
+   **这不是网络问题**，是拿不到 Windows 凭证库（Git Credential Manager 里存的 GitHub 账号）。
+   处理：在正常终端里执行一次 `git push`（会弹登录框）把凭证重新存一遍；
+   或者在受限/沙箱终端里放开权限再执行。
+4. 报 `Connection was reset` / 超时：网络或加速器，回到第 1 步。
+5. 全都排不掉时的兜底：`push-jar.ps1 -SkipPull` —— 用本地已提交的代码直接打包上传 jar，
+   服务器这条路完全不依赖 GitHub（本次就是这个救回来的）。
+
+**约定**：同一个上传问题**连续失败两次**，就先问一次"GitHub 加速器开了吗"，不要闷头连续重试。
+
 ## 十、常见问题
 
 | 现象 | 原因 / 处理 |
@@ -291,6 +307,8 @@ bash /root/arona/zhuochong/deploy/update.sh --nick "阿罗娜（v0.0.7测试）"
 | 体检一直「服务已起但没连上 NapCat」 | ① NapCat 容器没起/没登录 ② token 与 `ZC_QQ_WS_TOKEN` 不一致 ③ 3001 端口 `host` 不是 `0.0.0.0` |
 | 构建卡在下载依赖 | 给 Maven 配阿里云镜像（`~/.m2/settings.xml`），或改用 `push-jar.ps1` 本地打包上传 |
 | jar 特别大（>1GB） | 用了本地打包但没加 `-Pcloud` |
+| `git push` 报 `Connection was reset` / 超时 | 先看 GitHub 加速器开没开；排查顺序见 9.2 |
+| `git push` 报 `schannel: ... SEC_E_NO_CREDENTIALS` | 不是网络问题，是 Windows 凭证库取不到 GitHub 账号；在正常终端 `git push` 一次重新登录，或放开权限执行（见 9.2） |
 | `sync-to-repo.ps1` 说没有变化 | 改动还没保存，或同步路径参数不对 |
-| 改了 `ZC_QQ_NICKNAME` 但 QQ 名没变 | 看日志有没有 `set_qq_profile` 的 retcode：老版本 NapCat 可能不支持该 action → 用 `/nick card 新名字` 改群名片（群里显示的就是群名片），或手动在 QQ 里改一次 |
+| 改了 `ZC_QQ_NICKNAME` 但群里名字没变 | ① 群里显示**优先群名片** → 用 `/nick card all 新名字`；② 本项目实测这版 NapCat 的 `set_qq_profile` 回 retcode=0 但账号昵称**静默不变**，别指望它（详见 9.1） |
 | 服务器 `git pull` 冲突 | `update.sh` 用 `reset --hard origin/main`，本地改动会被丢弃；要保留就先 commit/stash |
