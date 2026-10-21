@@ -603,13 +603,34 @@ public class QqAdminService {
                     + (want.isEmpty() || cur.isEmpty() ? "" : (want.equals(cur) ? "\n状态：一致 ✓" : "\n状态：不一致，重启会改一次"))
                     + "\n\n改法：\n/nick 阿罗娜（v0.0.7测试）       改 QQ 昵称（立刻生效）"
                     + "\n/nick card 阿罗娜（v0.0.7测试）  只改本群群名片"
+                    + "\n/nick card all 阿罗娜（v0.0.7测试）  所有群一次改完（群里显示的是群名片优先）"
                     + "\n上传时也可以带一句：push-jar.ps1 -Nick \"阿罗娜（v0.0.7测试）\"";
         }
         String sub = parts[1].toLowerCase();
         if ("card".equals(sub) || "群名片".equals(sub) || "本群".equals(sub)) {
-            if (fromGroup <= 0) return "群名片只能在群里改：在群里发 /nick card 新名字";
             String name = rest(parts, 2);
-            if (name.isEmpty()) return "用法：/nick card 阿罗娜（v0.0.7测试）";
+            // /nick card all 新名字 → 把所有群（get_group_list）里我的群名片都改掉
+            // 为什么要 all：群里显示的是群名片优先，只改 QQ 名在群里可能看不出变化
+            if (name.startsWith("all ") || name.startsWith("全部 ") || name.equals("all")) {
+                String real = name.replaceFirst("^(all|全部)\\s*", "");
+                if (real.isEmpty()) return "用法：/nick card all 阿罗娜（v0.0.7测试）";
+                java.util.List<Long> groups = client.getGroupIds();
+                if (groups.isEmpty()) return "没拿到群列表（NapCat 没连上？）";
+                int ok = 0;
+                StringBuilder bad = new StringBuilder();
+                for (Long g : groups) {
+                    if (com.cy.qq.NapCatWsClient.isOk(client.setSelfGroupCard(g, real))) {
+                        ok++;
+                    } else {
+                        if (bad.length() < 120) bad.append(g).append(' ');
+                    }
+                }
+                return "已把 " + ok + "/" + groups.size() + " 个群的群名片改成「" + real + "」"
+                        + (bad.length() == 0 ? "" : "\n失败（没权限/权限不足）：" + bad.toString().trim());
+            }
+            if (fromGroup <= 0) return "群名片只能在群里改：在群里发 /nick card 新名字"
+                    + "\n或者 /nick card all 新名字（所有群一次改完）";
+            if (name.isEmpty()) return "用法：\n/nick card 阿罗娜（v0.0.7测试）      只改本群\n/nick card all 阿罗娜（v0.0.7测试）  所有群都改";
             com.fasterxml.jackson.databind.JsonNode r = client.setSelfGroupCard(fromGroup, name);
             return com.cy.qq.NapCatWsClient.isOk(r)
                     ? "本群群名片已改为「" + name + "」"

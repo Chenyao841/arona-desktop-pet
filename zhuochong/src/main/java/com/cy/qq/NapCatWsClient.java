@@ -396,6 +396,31 @@ public class NapCatWsClient {
     }
 
     /**
+     * 拉机器人所在的所有群（{@code get_group_list}）。
+     *
+     * <p>用途：{@code /nick card all 新名字} 要一次把"每个群的群名片"都改掉，
+     * 而 {@link QqRuntimeState} 只记"这次启动后见过消息的群"，重启后是空的，不够用。
+     *
+     * @return 群号列表；拿不到就返回空列表
+     */
+    public java.util.List<Long> getGroupIds() {
+        java.util.List<Long> out = new java.util.ArrayList<>();
+        JsonNode resp = callApi("get_group_list", M.createObjectNode(), 10000);
+        if (!isOk(resp)) {
+            System.out.println("[QQ] get_group_list 失败: " + (resp == null ? "无回执" : resp.toString()));
+            return out;
+        }
+        JsonNode data = resp.path("data");
+        if (data.isArray()) {
+            for (JsonNode g : data) {
+                long id = g.path("group_id").asLong(0);
+                if (id > 0) out.add(id);
+            }
+        }
+        return out;
+    }
+
+    /**
      * 按配置把昵称改成 {@code qq.nickname} —— <b>只有不一样才改</b>。
      *
      * <p>所以每次重启/重连都调它也不会反复改名：改成功一次之后，

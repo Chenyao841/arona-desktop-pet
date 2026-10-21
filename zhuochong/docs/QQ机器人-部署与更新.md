@@ -257,9 +257,15 @@ bash /root/arona/zhuochong/deploy/update.sh --nick "阿罗娜（v0.0.7测试）"
 
 ```
 /nick                       看当前 QQ 名 + 配置里要改成什么
-/nick 阿罗娜（v0.0.7测试）    立刻改（NapCat set_qq_profile）
-/nick card 阿罗娜（v0.0.7测试） 只改本群群名片
+/nick 阿罗娜（v0.0.7测试）       立刻改【账号昵称】（NapCat set_qq_profile）
+/nick card 阿罗娜（v0.0.7测试）  只改【本群】的群名片
+/nick card all 阿罗娜（v0.0.7测试） 把机器人所在的【所有群】群名片一次改完
 ```
+
+> 三个名字别搞混：① **账号昵称** = 小号 QQ 资料里的名字（`set_qq_profile` 改的）；
+> ② **群名片** = 机器人在某个群里的显示名，**群里优先显示这个**；
+> ③ 管理员的群昵称 = 另一个人的群名片，只跟护短判定有关。
+> 所以「群里看到的名字没变」多半是群名片没改 → `/nick card all 新名字`。
 
 **机制**：配置项 `ZC_QQ_NICKNAME`（→ `qq.nickname`）。连上 NapCat 拿到 `get_login_info` 的
 当前昵称后**比一次**：不一样才调一次 `set_qq_profile`，一样就什么都不做。
