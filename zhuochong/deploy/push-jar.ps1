@@ -139,17 +139,30 @@ if ($NoRestart) {
     Write-Host "    生效：ssh $Target 'cd $RemoteDir && cp -f zhuochong.jar zhuochong.jar.prev; mv -f zhuochong.jar.new zhuochong.jar; systemctl restart $Service'" -ForegroundColor Gray
     exit 0
 }
-$remote = "cd $RemoteDir && cp -f zhuochong.jar zhuochong.jar.prev 2>/dev/null; mv -f zhuochong.jar.new zhuochong.jar; systemctl restart $Service; sleep 10; curl -s --max-time 6 http://127.0.0.1:8080/qq/status"
+$remote = "cd $RemoteDir && cp -f zhuochong.jar zhuochong.jar.prev 2>/dev/null; mv -f zhuochong.jar.new zhuochong.jar; systemctl restart $Service"
 $out = & ssh $Target $remote 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host $out
     Die "切换/重启失败。回滚：ssh $Target 'cd $RemoteDir && cp -f zhuochong.jar.prev zhuochong.jar && systemctl restart $Service'"
 }
-Ok "已重启"
+Ok "已重启（应用启动约 15s，下面轮询等它就绪）"
 
 # ---------- 5) 体检 ----------
 Step "5/5" "体检 /qq/status"
-$body = ($out | Out-String).Trim()
+# 轮询而不是 sleep 10 + 一次 curl：应用启动 ≈15s，固定等待会把"正常启动中"误判成失败，
+# 还会给出"去回滚"的误导提示（踩过一次）。最多等 60s。
+$body = ""
+for ($i = 1; $i -le 20; $i++) {
+    Start-Sleep -Seconds 3
+    $body = (& ssh $Target "curl -s --max-time 5 http://127.0.0.1:8080/qq/status" 2>&1 | Out-String).Trim()
+    if ($body -match '"code"\s*:\s*1') { Ok "服务已就绪（约 $($i * 3)s）"; break }
+    if ($i -lt 20) { Write-Host "    还在启动… $($i * 3)s" -ForegroundColor DarkGray }
+}
+if ($body -notmatch '"code"\s*:\s*1') {
+    Warn "60s 内没等到 /qq/status 就绪，原始输出："
+    Write-Host $body
+    Die "服务可能没起来。看日志：ssh $Target 'journalctl -u $Service -n 60 --no-pager'"
+}
 if ($body -match '"connected"\s*:\s*true') {
     Ok "NapCat 已连上"
     $self = if ($body -match '"selfId"\s*:\s*(-?\d+)')     { $matches[1] } else { "?" }

@@ -267,6 +267,14 @@ bash /root/arona/zhuochong/deploy/update.sh --nick "阿罗娜（v0.0.7测试）"
 > ③ 管理员的群昵称 = 另一个人的群名片，只跟护短判定有关。
 > 所以「群里看到的名字没变」多半是群名片没改 → `/nick card all 新名字`。
 
+**现场实测（2026-10-21，本项目的 NapCat）**：
+
+- `set_qq_profile` **回 retcode=0 但账号昵称实际没变**——重启后 `get_login_info` 报的还是 `@小羊羔@`。
+  也就是说这版 NapCat 的改昵称是"静默无效"，日志会显示"已改为…"，但群里/资料里看不到变化。
+- 而**群名片**（`set_group_card`）是实打实生效的，群里显示的也正是群名片优先。
+- 结论：**版本号走群名片** → `/nick card all 阿罗娜（v0.0.7测试）`。
+  `ZC_QQ_NICKNAME` 保留着（真要哪天 NapCat 修好了就自动生效，没修好也无害：每次启动只多一次 API 调用）。
+
 **机制**：配置项 `ZC_QQ_NICKNAME`（→ `qq.nickname`）。连上 NapCat 拿到 `get_login_info` 的
 当前昵称后**比一次**：不一样才调一次 `set_qq_profile`，一样就什么都不做。
 所以重启/重连都不会反复改名；改名失败（老版本 NapCat 不认这个 action）会打日志，
